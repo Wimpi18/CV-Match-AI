@@ -5,6 +5,10 @@
 
 # dotenv files
 .env
+.env.local
+.env.*.local
+*.env
+
 
 # User-specific files
 *.rsuser
@@ -384,12 +388,8 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 
-# VS Code files for those working on multiple tools
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
+# VS Code files
+.vscode/
 *.code-workspace
 
 # Local History for Visual Studio Code
@@ -480,3 +480,35 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Compiled output
+frontend/dist/
+frontend/tmp/
+frontend/out-tsc/
+frontend/bazel-out/
+
+# Dependency directories
+frontend/node_modules/
+frontend/.angular/cache/
+
+# Local logs and lockfiles
+frontend/connect.lock
+frontend/coverage/
+frontend/libpeerconnection.log
+frontend/testem.log
+frontend/npm-debug.log
+frontend/yarn-error.log
+
+# Typings
+frontend/typings/
+
+# Screenshots
+frontend/__screenshots__/
+
+# Additional IDE and Editor Settings
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
