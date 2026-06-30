@@ -13,10 +13,10 @@ var containerAppEnvName = 'cae-${projectName}-${environmentName}-${uniqueSuffix}
 var sqlServerName = 'sql-${projectName}-${environmentName}-${uniqueSuffix}'
 var sqlDbName = 'sqldb-${projectName}-${environmentName}'
 var cosmosDbAccountName = 'cosmos-${projectName}-${environmentName}-${uniqueSuffix}'
-var storageAccountName = 'st${projectName}${environmentName}${uniqueSuffix}'
-var docIntelName = 'cog-docintel-${projectName}-${environmentName}-${uniqueSuffix}'
+var storageAccountName = take('st${projectName}${environmentName}${uniqueSuffix}', 24)
+var docIntelName = 'cog-dintel-${projectName}-${environmentName}-${uniqueSuffix}'
 var openaiName = 'cog-openai-${projectName}-${environmentName}-${uniqueSuffix}'
-var keyVaultName = take('kv-${projectName}-${environmentName}-${uniqueSuffix}', 24)
+var keyVaultName = take('keyv-${projectName}-${environmentName}-${uniqueSuffix}', 24)
 
 // 1. Log Analytics Workspace (shared logging)
 resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2025-07-01' = {
@@ -24,9 +24,9 @@ resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2025-07
   location: location
   properties: {
     sku: {
-      name: 'Free'
+      name: 'PerGB2018'
     }
-    retentionInDays: 7
+    retentionInDays: 30
   }
 }
 
@@ -38,7 +38,7 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   properties: {
     Application_Type: 'web'
     WorkspaceResourceId: logAnalyticsWorkspace.id
-    RetentionInDays: 7
+    RetentionInDays: 30
   }
 }
 
@@ -76,7 +76,7 @@ resource sqlServer 'Microsoft.Sql/servers@2025-01-01' = {
   properties: {
     administratorLogin: 'wimpisqladmin'
     administratorLoginPassword: sqlAdminPassword
-    version: '17.0'
+    version: '12.0'
   }
 }
 
@@ -182,6 +182,7 @@ resource docIntel 'Microsoft.CognitiveServices/accounts@2026-03-01' = {
   kind: 'FormRecognizer'
   sku: {
     name: 'S0'
+    tier: 'Standard'
   }
   properties: {
     customSubDomainName: docIntelName
@@ -196,27 +197,11 @@ resource openai 'Microsoft.CognitiveServices/accounts@2026-03-01' = {
   kind: 'OpenAI'
   sku: {
     name: 'S0'
+    tier: 'Standard'
   }
   properties: {
     customSubDomainName: openaiName
     publicNetworkAccess: 'Enabled'
-  }
-}
-
-// Deployment of DeepSeek model inside OpenAI
-resource openaiModel 'Microsoft.CognitiveServices/accounts/deployments@2026-03-01' = {
-  parent: openai
-  name: 'deepseek-v4-pro'
-  properties: {
-    model: {
-      format: 'DeepSeek'
-      name: 'deepseek-v4-pro'
-      version: '2026-04-23'
-    }
-    scaleSettings: {
-      scaleType: 'Standard'
-      capacity: 10
-    }
   }
 }
 
