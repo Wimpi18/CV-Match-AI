@@ -1,0 +1,9 @@
+# Evitar subir binarios y temporales locales
+bin/
+obj/
+out/
+
+# Evitar subir configuraciones locales o secretos
+.env
+*.user
+appsettings.Development.json

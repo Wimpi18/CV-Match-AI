@@ -1,0 +1,49 @@
+name: Deploy Backend to Azure Container Apps
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      # El pipeline solo se disparará si hay cambios en el backend o en el propio pipeline
+      - "backend/**"
+      - ".github/workflows/deploy.yml"
+
+# Permisos requeridos para la autenticación por OIDC
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  RESOURCE_GROUP: "rg-cvmatchai-prod"
+  ACR_NAME: "crcvmatchaicah42hdmorzjm"
+  CONTAINER_APP_ENV: "cae-cvmatchai-prod-cah42hdmorzjm"
+  CONTAINER_APP_NAME: "ca-cvmatch-api"
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: API
+
+    steps:
+      # 1. Checkout del código
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      # 2. Login en Azure usando OIDC
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # 3. Compilar, Subir a ACR y Desplegar a ACA en un solo paso
+      - name: Build and Deploy to Container App
+        uses: azure/container-apps-deploy-action@v2
+        with:
+          appSourcePath: ${{ github.workspace }}/backend/CvMatchApi
+          acrName: ${{ env.ACR_NAME }}
+          resourceGroup: ${{ env.RESOURCE_GROUP }}
+          containerAppEnvironment: ${{ env.CONTAINER_APP_ENV }}
+          containerAppName: ${{ env.CONTAINER_APP_NAME }}
