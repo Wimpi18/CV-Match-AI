@@ -49,3 +49,4 @@ jobs:
           containerAppName: ${{ env.CONTAINER_APP_NAME }}
           acrUsername: ${{ secrets.ACR_USERNAME }}
           acrPassword: ${{ secrets.ACR_PASSWORD }}
+          targetPort: 8080
