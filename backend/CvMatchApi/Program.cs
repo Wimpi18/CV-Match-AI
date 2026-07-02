@@ -17,11 +17,6 @@ if (app.Environment.IsDevelopment())
 
 app.MapGet("/", () => new { Message = "Hola Mundo" });
 
-if (!app.Environment.IsProduction())
-{
-    app.UseHttpsRedirection();
-}
-
 app.UseAuthorization();
 
 app.MapControllers();
