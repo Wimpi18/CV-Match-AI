@@ -7,6 +7,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Microsoft.Azure.Cosmos;
 using Microsoft.Data.SqlClient;
 
 namespace ConnectionValidator;
@@ -115,6 +116,21 @@ public class ApiTester
 
         // Test 17: Verify matching removes duplicate canonical results
         await TestSkillsMatchDuplicatesAsync(oauthToken).ConfigureAwait(false);
+
+        // --- NEW TESTS FOR PROFILE STRUCTURING AND COSMOS DB ---
+        Console.WriteLine("\n--- Testing Profile Structuring with OpenAI & Cosmos DB ---");
+
+        // Test 18: Verify process profile without JWT returns 401 Unauthorized
+        await TestUnauthorizedProfileProcessAsync().ConfigureAwait(false);
+
+        // Test 19: Verify profile structuring and storage returning 200 OK
+        await TestProfileProcessAndStorageAsync(oauthToken).ConfigureAwait(false);
+
+        // Test 20: Connect to Cosmos DB and verify profile document
+        await VerifyProfileInCosmosDbAsync().ConfigureAwait(false);
+
+        // Test 21: Succeeding upload overwrites previous active profile
+        await TestProfileOverwriteAsync(oauthToken).ConfigureAwait(false);
 
         Console.WriteLine("==================================================");
         Console.WriteLine("        API Authentication & Upload Tests Complete ");
@@ -560,7 +576,9 @@ public class ApiTester
     {
         Console.Write("Test 15: POST /api/skills/match without JWT... ");
         var body = new { RawSkills = new[] { "ReactJS" } };
-        var response = await _client.PostAsJsonAsync($"{_baseUrl}/api/skills/match", body).ConfigureAwait(false);
+        var response = await _client
+            .PostAsJsonAsync($"{_baseUrl}/api/skills/match", body)
+            .ConfigureAwait(false);
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
             Console.ForegroundColor = ConsoleColor.Green;
@@ -587,26 +605,40 @@ public class ApiTester
         var response = await _client.SendAsync(request).ConfigureAwait(false);
         if (response.StatusCode == HttpStatusCode.OK)
         {
-            var json = await response.Content.ReadFromJsonAsync<JsonElement>().ConfigureAwait(false);
-            if (json.TryGetProperty("canonicalSkills", out var canonProp) && json.TryGetProperty("customSkills", out var custProp))
+            var json = await response
+                .Content.ReadFromJsonAsync<JsonElement>()
+                .ConfigureAwait(false);
+            if (
+                json.TryGetProperty("canonicalSkills", out var canonProp)
+                && json.TryGetProperty("customSkills", out var custProp)
+            )
             {
-                var canonicalList = JsonSerializer.Deserialize<List<string>>(canonProp.GetRawText())!;
+                var canonicalList = JsonSerializer.Deserialize<List<string>>(
+                    canonProp.GetRawText()
+                )!;
                 var customList = JsonSerializer.Deserialize<List<string>>(custProp.GetRawText())!;
 
-                bool matchCanon = canonicalList.Contains("React") && canonicalList.Contains("JavaScript") && canonicalList.Contains("Docker");
+                bool matchCanon =
+                    canonicalList.Contains("React")
+                    && canonicalList.Contains("JavaScript")
+                    && canonicalList.Contains("Docker");
                 bool matchCust = customList.Contains("Flutter");
 
                 if (matchCanon && matchCust && canonicalList.Count == 3 && customList.Count == 1)
                 {
                     Console.ForegroundColor = ConsoleColor.Green;
-                    Console.WriteLine("[SUCCESS] Standardized ReactJS, JS, docker -> React, JavaScript, Docker, and Flutter -> custom.");
+                    Console.WriteLine(
+                        "[SUCCESS] Standardized ReactJS, JS, docker -> React, JavaScript, Docker, and Flutter -> custom."
+                    );
                     Console.ResetColor();
                     return;
                 }
                 else
                 {
                     Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine($"[FAILURE] Items mismatch. Canonical: {string.Join(',', canonicalList)}, Custom: {string.Join(',', customList)}");
+                    Console.WriteLine(
+                        $"[FAILURE] Items mismatch. Canonical: {string.Join(',', canonicalList)}, Custom: {string.Join(',', customList)}"
+                    );
                     Console.ResetColor();
                     return;
                 }
@@ -631,22 +663,214 @@ public class ApiTester
         var response = await _client.SendAsync(request).ConfigureAwait(false);
         if (response.StatusCode == HttpStatusCode.OK)
         {
-            var json = await response.Content.ReadFromJsonAsync<JsonElement>().ConfigureAwait(false);
+            var json = await response
+                .Content.ReadFromJsonAsync<JsonElement>()
+                .ConfigureAwait(false);
             if (json.TryGetProperty("canonicalSkills", out var canonProp))
             {
-                var canonicalList = JsonSerializer.Deserialize<List<string>>(canonProp.GetRawText())!;
+                var canonicalList = JsonSerializer.Deserialize<List<string>>(
+                    canonProp.GetRawText()
+                )!;
 
                 if (canonicalList.Count == 1 && canonicalList.Contains("React"))
                 {
                     Console.ForegroundColor = ConsoleColor.Green;
-                    Console.WriteLine("[SUCCESS] Deduplicated 'ReactJS' and 'react.js' to single 'React'.");
+                    Console.WriteLine(
+                        "[SUCCESS] Deduplicated 'ReactJS' and 'react.js' to single 'React'."
+                    );
                     Console.ResetColor();
                     return;
                 }
                 else
                 {
                     Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine($"[FAILURE] Duplicate entries returned: {string.Join(',', canonicalList)}");
+                    Console.WriteLine(
+                        $"[FAILURE] Duplicate entries returned: {string.Join(',', canonicalList)}"
+                    );
+                    Console.ResetColor();
+                    return;
+                }
+            }
+        }
+
+        string err = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.WriteLine($"[FAILURE] Status: {response.StatusCode}, Detail: {err}");
+        Console.ResetColor();
+    }
+
+    private async Task TestUnauthorizedProfileProcessAsync()
+    {
+        Console.Write("Test 18: POST /api/profile/process without JWT... ");
+        var body = new
+        {
+            CvText = "Test CV Text",
+            CanonicalSkills = new[] { "React" },
+            CustomSkills = new[] { "Flutter" },
+        };
+        var response = await _client
+            .PostAsJsonAsync($"{_baseUrl}/api/profile/process", body)
+            .ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("[SUCCESS] Rejected with 401 Unauthorized.");
+            Console.ResetColor();
+        }
+        else
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"[FAILURE] Returned {response.StatusCode} instead of 401.");
+            Console.ResetColor();
+        }
+    }
+
+    private async Task TestProfileProcessAndStorageAsync(string token)
+    {
+        Console.Write("Test 19: POST /api/profile/process (Valid CV structure) with JWT... ");
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"{_baseUrl}/api/profile/process"
+        );
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var body = new
+        {
+            CvText = "Google Test User. Phone: +123456. Location: Seattle. Work: Tech Corp, Software Engineer since 2024.",
+            CanonicalSkills = new List<string> { "React", "JavaScript", "Docker" },
+            CustomSkills = new List<string> { "Flutter" },
+        };
+        request.Content = JsonContent.Create(body);
+
+        var response = await _client.SendAsync(request).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.OK)
+        {
+            var json = await response
+                .Content.ReadFromJsonAsync<JsonElement>()
+                .ConfigureAwait(false);
+            if (json.TryGetProperty("profile", out var profProp))
+            {
+                if (
+                    profProp.TryGetProperty("id", out var idProp)
+                    && idProp.GetString() == "test-google-oauth@example.com"
+                )
+                {
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine("[SUCCESS] Profile processed successfully and returned.");
+                    Console.ResetColor();
+                    return;
+                }
+            }
+        }
+
+        string err = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.WriteLine($"[FAILURE] Status: {response.StatusCode}, Detail: {err}");
+        Console.ResetColor();
+    }
+
+    private async Task VerifyProfileInCosmosDbAsync()
+    {
+        Console.Write("Test 20: Connect to Cosmos DB and verify profile document... ");
+        var connectionString = Environment.GetEnvironmentVariable("COSMOS_CONNECTION_STRING");
+        if (string.IsNullOrEmpty(connectionString))
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine("[FAILURE] COSMOS_CONNECTION_STRING is missing in env.");
+            Console.ResetColor();
+            return;
+        }
+
+        try
+        {
+            using var cosmosClient = new CosmosClient(connectionString);
+            var db = cosmosClient.GetDatabase("cvmatch-store");
+            var container = db.GetContainer("resumes");
+
+            var email = "test-google-oauth@example.com";
+            var response = await container
+                .ReadItemAsync<JsonElement>(email, new PartitionKey(email))
+                .ConfigureAwait(false);
+
+            if (response.StatusCode == HttpStatusCode.OK)
+            {
+                var doc = response.Resource;
+                if (doc.TryGetProperty("userId", out var userProp) && userProp.GetString() == email)
+                {
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine(
+                        "[SUCCESS] Document found in Cosmos DB resumes container with correct keys."
+                    );
+                    Console.ResetColor();
+                    return;
+                }
+            }
+
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"[FAILURE] Cosmos returned status {response.StatusCode}.");
+            Console.ResetColor();
+        }
+        catch (Exception ex)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"[FAILURE] Cosmos DB read failed: {ex.Message}");
+            Console.ResetColor();
+        }
+    }
+
+    private async Task TestProfileOverwriteAsync(string token)
+    {
+        Console.Write("Test 21: Succeeding upload overwrites previous active profile... ");
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"{_baseUrl}/api/profile/process"
+        );
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var body = new
+        {
+            CvText = "Google Test User. Updated Profile. Phone: +123456.",
+            CanonicalSkills = new List<string> { "React" },
+            CustomSkills = new List<string>(),
+        };
+        request.Content = JsonContent.Create(body);
+
+        var response = await _client.SendAsync(request).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.OK)
+        {
+            // Verify in Cosmos DB that text was updated
+            var connectionString = Environment.GetEnvironmentVariable("COSMOS_CONNECTION_STRING");
+            if (!string.IsNullOrEmpty(connectionString))
+            {
+                try
+                {
+                    using var cosmosClient = new CosmosClient(connectionString);
+                    var container = cosmosClient.GetContainer("cvmatch-store", "resumes");
+                    var email = "test-google-oauth@example.com";
+                    var cosmosResp = await container
+                        .ReadItemAsync<JsonElement>(email, new PartitionKey(email))
+                        .ConfigureAwait(false);
+                    if (cosmosResp.StatusCode == HttpStatusCode.OK)
+                    {
+                        var doc = cosmosResp.Resource;
+                        if (
+                            doc.TryGetProperty("rawText", out var textProp)
+                            && textProp.GetString() == body.CvText
+                        )
+                        {
+                            Console.ForegroundColor = ConsoleColor.Green;
+                            Console.WriteLine(
+                                "[SUCCESS] Document successfully updated/overwritten in Cosmos DB resumes container."
+                            );
+                            Console.ResetColor();
+                            return;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"[FAILURE] Overwrite verify failed: {ex.Message}");
                     Console.ResetColor();
                     return;
                 }

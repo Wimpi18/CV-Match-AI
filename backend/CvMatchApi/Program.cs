@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using System.Text;
 using Azure.Storage.Blobs;
+using Azure.AI.OpenAI;
+using Microsoft.Azure.Cosmos;
 using CvMatchApi.Data;
 using CvMatchApi.Middleware;
 using CvMatchApi.Services;
@@ -64,6 +66,27 @@ builder.Services.AddScoped<IBlobStorageService, BlobStorageService>();
 
 // Register Skills Catalog Service
 builder.Services.AddScoped<ISkillsCatalogService, SkillsCatalogService>();
+
+// Configure Cosmos DB Client
+var cosmosConnectionString = Environment.GetEnvironmentVariable("COSMOS_CONNECTION_STRING");
+if (!string.IsNullOrEmpty(cosmosConnectionString))
+{
+    builder.Services.AddSingleton(new CosmosClient(cosmosConnectionString));
+}
+
+// Register Cosmos DB Service
+builder.Services.AddScoped<ICosmosDbService, CosmosDbService>();
+
+// Configure Azure OpenAI Client
+var openAiEndpoint = Environment.GetEnvironmentVariable("AZURE_OPENAI_ENDPOINT");
+var openAiKey = Environment.GetEnvironmentVariable("AZURE_OPENAI_KEY");
+if (!string.IsNullOrEmpty(openAiEndpoint) && !string.IsNullOrEmpty(openAiKey))
+{
+    builder.Services.AddSingleton(new AzureOpenAIClient(new Uri(openAiEndpoint), new System.ClientModel.ApiKeyCredential(openAiKey)));
+}
+
+// Register Profile Structuring Service
+builder.Services.AddScoped<IProfileStructuringService, ProfileStructuringService>();
 
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
