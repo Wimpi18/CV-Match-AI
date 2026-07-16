@@ -104,6 +104,18 @@ public class ApiTester
         // Test 14: Verify 3 usage logs are registered in Azure SQL DB
         await VerifyUsageLogCountInDatabaseAsync(3).ConfigureAwait(false);
 
+        // --- NEW TESTS FOR SKILLS CATALOG MATCHING ---
+        Console.WriteLine("\n--- Testing Skills Catalog Crossing with SQL Server ---");
+
+        // Test 15: Verify match without JWT returns 401 Unauthorized
+        await TestUnauthorizedSkillsMatchAsync().ConfigureAwait(false);
+
+        // Test 16: Verify matching standardizes synonyms and custom classification
+        await TestSkillsMatchCrossingAsync(oauthToken).ConfigureAwait(false);
+
+        // Test 17: Verify matching removes duplicate canonical results
+        await TestSkillsMatchDuplicatesAsync(oauthToken).ConfigureAwait(false);
+
         Console.WriteLine("==================================================");
         Console.WriteLine("        API Authentication & Upload Tests Complete ");
         Console.WriteLine("==================================================");
@@ -542,5 +554,108 @@ public class ApiTester
             Console.WriteLine($"[FAILURE] Database check failed: {ex.Message}");
             Console.ResetColor();
         }
+    }
+
+    private async Task TestUnauthorizedSkillsMatchAsync()
+    {
+        Console.Write("Test 15: POST /api/skills/match without JWT... ");
+        var body = new { RawSkills = new[] { "ReactJS" } };
+        var response = await _client.PostAsJsonAsync($"{_baseUrl}/api/skills/match", body).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("[SUCCESS] Rejected with 401 Unauthorized.");
+            Console.ResetColor();
+        }
+        else
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"[FAILURE] Returned {response.StatusCode} instead of 401.");
+            Console.ResetColor();
+        }
+    }
+
+    private async Task TestSkillsMatchCrossingAsync(string token)
+    {
+        Console.Write("Test 16: POST /api/skills/match (ReactJS, JS, docker, Flutter)... ");
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/api/skills/match");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var body = new { RawSkills = new[] { "ReactJS", "JS", "docker", "Flutter" } };
+        request.Content = JsonContent.Create(body);
+
+        var response = await _client.SendAsync(request).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.OK)
+        {
+            var json = await response.Content.ReadFromJsonAsync<JsonElement>().ConfigureAwait(false);
+            if (json.TryGetProperty("canonicalSkills", out var canonProp) && json.TryGetProperty("customSkills", out var custProp))
+            {
+                var canonicalList = JsonSerializer.Deserialize<List<string>>(canonProp.GetRawText())!;
+                var customList = JsonSerializer.Deserialize<List<string>>(custProp.GetRawText())!;
+
+                bool matchCanon = canonicalList.Contains("React") && canonicalList.Contains("JavaScript") && canonicalList.Contains("Docker");
+                bool matchCust = customList.Contains("Flutter");
+
+                if (matchCanon && matchCust && canonicalList.Count == 3 && customList.Count == 1)
+                {
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine("[SUCCESS] Standardized ReactJS, JS, docker -> React, JavaScript, Docker, and Flutter -> custom.");
+                    Console.ResetColor();
+                    return;
+                }
+                else
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"[FAILURE] Items mismatch. Canonical: {string.Join(',', canonicalList)}, Custom: {string.Join(',', customList)}");
+                    Console.ResetColor();
+                    return;
+                }
+            }
+        }
+
+        string err = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.WriteLine($"[FAILURE] Status: {response.StatusCode}, Detail: {err}");
+        Console.ResetColor();
+    }
+
+    private async Task TestSkillsMatchDuplicatesAsync(string token)
+    {
+        Console.Write("Test 17: POST /api/skills/match (ReactJS, react.js - duplicates check)... ");
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/api/skills/match");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var body = new { RawSkills = new[] { "ReactJS", "react.js" } };
+        request.Content = JsonContent.Create(body);
+
+        var response = await _client.SendAsync(request).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.OK)
+        {
+            var json = await response.Content.ReadFromJsonAsync<JsonElement>().ConfigureAwait(false);
+            if (json.TryGetProperty("canonicalSkills", out var canonProp))
+            {
+                var canonicalList = JsonSerializer.Deserialize<List<string>>(canonProp.GetRawText())!;
+
+                if (canonicalList.Count == 1 && canonicalList.Contains("React"))
+                {
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine("[SUCCESS] Deduplicated 'ReactJS' and 'react.js' to single 'React'.");
+                    Console.ResetColor();
+                    return;
+                }
+                else
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"[FAILURE] Duplicate entries returned: {string.Join(',', canonicalList)}");
+                    Console.ResetColor();
+                    return;
+                }
+            }
+        }
+
+        string err = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.WriteLine($"[FAILURE] Status: {response.StatusCode}, Detail: {err}");
+        Console.ResetColor();
     }
 }

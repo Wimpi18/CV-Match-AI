@@ -22,32 +22,33 @@ builder.Services.AddControllers();
 
 // Configure AppDbContext with Azure SQL Database connection string
 var sqlConnectionString = Environment.GetEnvironmentVariable("AZURE_SQL_CONNECTION_STRING");
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(sqlConnectionString));
+builder.Services.AddDbContext<AppDbContext>(options => options.UseSqlServer(sqlConnectionString));
 
 // Configure JWT Authentication
-var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY") ?? "SuperSecretSecureKeyForCvMatchAi2026!";
+var jwtKey =
+    Environment.GetEnvironmentVariable("JWT_KEY") ?? "SuperSecretSecureKeyForCvMatchAi2026!";
 var jwtIssuer = Environment.GetEnvironmentVariable("JWT_ISSUER") ?? "CvMatchIssuer";
 var jwtAudience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? "CvMatchAudience";
 
-builder.Services.AddAuthentication(options =>
-{
-    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-})
-.AddJwtBearer(options =>
-{
-    options.TokenValidationParameters = new TokenValidationParameters
+builder
+    .Services.AddAuthentication(options =>
     {
-        ValidateIssuer = true,
-        ValidateAudience = true,
-        ValidateLifetime = true,
-        ValidateIssuerSigningKey = true,
-        ValidIssuer = jwtIssuer,
-        ValidAudience = jwtAudience,
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
-    };
-});
+        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    })
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = jwtIssuer,
+            ValidAudience = jwtAudience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+        };
+    });
 
 builder.Services.AddAuthorization();
 
@@ -60,6 +61,9 @@ if (!string.IsNullOrEmpty(blobConnectionString))
 
 // Register Custom Blob Storage Service
 builder.Services.AddScoped<IBlobStorageService, BlobStorageService>();
+
+// Register Skills Catalog Service
+builder.Services.AddScoped<ISkillsCatalogService, SkillsCatalogService>();
 
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
@@ -74,7 +78,8 @@ using (var scope = app.Services.CreateScope())
 
     // Ensure JobPostings and UsageLogs tables are explicitly created since EF Core's EnsureCreated()
     // does not update schema if the database already exists.
-    var sql = @"
+    var sql =
+        @"
         IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'JobPostings')
         BEGIN
             CREATE TABLE JobPostings (
@@ -141,7 +146,10 @@ void LoadDotEnv()
                 string val = line.Substring(idx + 1).Trim();
 
                 // Strip surrounding quotes if present
-                if ((val.StartsWith('"') && val.EndsWith('"')) || (val.StartsWith('\'') && val.EndsWith('\'')))
+                if (
+                    (val.StartsWith('"') && val.EndsWith('"'))
+                    || (val.StartsWith('\'') && val.EndsWith('\''))
+                )
                 {
                     val = val.Substring(1, val.Length - 2);
                 }
