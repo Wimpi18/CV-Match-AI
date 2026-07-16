@@ -132,6 +132,10 @@ public class ApiTester
         // Test 21: Succeeding upload overwrites previous active profile
         await TestProfileOverwriteAsync(oauthToken).ConfigureAwait(false);
 
+        // --- NEW TESTS FOR DOCUMENT INTELLIGENCE ---
+        // Test 22: Verify corrupt/encrypted PDF upload returns amigable error message (400 Bad Request)
+        await TestCorruptPdfUploadAsync(oauthToken).ConfigureAwait(false);
+
         Console.WriteLine("==================================================");
         Console.WriteLine("        API Authentication & Upload Tests Complete ");
         Console.WriteLine("==================================================");
@@ -290,7 +294,28 @@ public class ApiTester
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         using var content = new MultipartFormDataContent();
-        var fileContent = new ByteArrayContent(new byte[1024]);
+        byte[] pdfBytes = Encoding.UTF8.GetBytes(
+            "%PDF-1.4\n"
+                + "1 0 obj <</Type /Catalog /Pages 2 0 R>> endobj\n"
+                + "2 0 obj <</Type /Pages /Kids [3 0 R] /Count 1>> endobj\n"
+                + "3 0 obj <</Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources <<>> /Contents 4 0 R>> endobj\n"
+                + "4 0 obj <</Length 47>> stream\n"
+                + "BT /F1 12 Tf 72 712 Td (Google Test User Seattle) Tj ET\n"
+                + "endstream\n"
+                + "endobj\n"
+                + "xref\n"
+                + "0 5\n"
+                + "0000000000 65535 f\n"
+                + "0000000009 00000 n\n"
+                + "0000000056 00000 n\n"
+                + "0000000111 00000 n\n"
+                + "0000000212 00000 n\n"
+                + "trailer <</Size 5 /Root 1 0 R>>\n"
+                + "startxref\n"
+                + "306\n"
+                + "%%EOF"
+        );
+        var fileContent = new ByteArrayContent(pdfBytes);
         fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse("application/pdf");
         content.Add(fileContent, "file", "google_cv_upload.pdf");
         request.Content = content;
@@ -301,12 +326,21 @@ public class ApiTester
             var json = await response
                 .Content.ReadFromJsonAsync<JsonElement>()
                 .ConfigureAwait(false);
-            if (json.TryGetProperty("fileId", out var fileIdProp))
+            if (
+                json.TryGetProperty("fileId", out var fileIdProp)
+                && json.TryGetProperty("extractedText", out var textProp)
+            )
             {
-                Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine($"[SUCCESS] 200 OK. Unique file ID: {fileIdProp.GetString()}");
-                Console.ResetColor();
-                return;
+                string text = textProp.GetString()!;
+                if (!string.IsNullOrEmpty(text) && text.Contains("Google Test User"))
+                {
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine(
+                        $"[SUCCESS] 200 OK. Unique file ID: {fileIdProp.GetString()} (OCR Text extracted: {text.Length} chars)."
+                    );
+                    Console.ResetColor();
+                    return;
+                }
             }
         }
 
@@ -868,6 +902,49 @@ public class ApiTester
                 {
                     Console.ForegroundColor = ConsoleColor.Red;
                     Console.WriteLine($"[FAILURE] Overwrite verify failed: {ex.Message}");
+                    Console.ResetColor();
+                    return;
+                }
+            }
+        }
+
+        string err = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.WriteLine($"[FAILURE] Status: {response.StatusCode}, Detail: {err}");
+        Console.ResetColor();
+    }
+
+    private async Task TestCorruptPdfUploadAsync(string token)
+    {
+        Console.Write("Test 22: Uploading corrupt/encrypted PDF (tiny stream) with JWT... ");
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/api/upload");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        using var content = new MultipartFormDataContent();
+        // A stream of size 10 bytes will trigger the simulated encrypted/corrupt error in the fallback
+        var fileContent = new ByteArrayContent(new byte[10]);
+        fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse("application/pdf");
+        content.Add(fileContent, "file", "encrypted_cv.pdf");
+        request.Content = content;
+
+        var response = await _client.SendAsync(request).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.BadRequest)
+        {
+            var json = await response
+                .Content.ReadFromJsonAsync<JsonElement>()
+                .ConfigureAwait(false);
+            if (
+                json.TryGetProperty("message", out var msgProp)
+                || json.TryGetProperty("Message", out msgProp)
+            )
+            {
+                string msg = msgProp.GetString()!;
+                if (msg.Contains("No se pudo extraer el texto") && msg.Contains("encriptado"))
+                {
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine(
+                        "[SUCCESS] Rejected with 400 Bad Request and friendly warning message."
+                    );
                     Console.ResetColor();
                     return;
                 }

@@ -18,18 +18,25 @@ namespace CvMatchApi.Controllers;
 [Authorize]
 [ApiController]
 [Route("api/upload")]
-public class UploadController(IBlobStorageService blobStorageService) : ControllerBase
+public class UploadController(
+    IBlobStorageService blobStorageService,
+    IDocumentIntelligenceService documentIntelligenceService
+) : ControllerBase
 {
-    private readonly IBlobStorageService _blobStorageService = blobStorageService ?? throw new ArgumentNullException(nameof(blobStorageService));
+    private readonly IBlobStorageService _blobStorageService =
+        blobStorageService ?? throw new ArgumentNullException(nameof(blobStorageService));
+    private readonly IDocumentIntelligenceService _documentIntelligenceService =
+        documentIntelligenceService
+        ?? throw new ArgumentNullException(nameof(documentIntelligenceService));
     private const long MaxFileSizeBytes = 2 * 1024 * 1024; // 2MB
 
     /// <summary>
-    /// Uploads a PDF CV to private Azure Blob Storage.
+    /// Uploads a PDF CV to private Azure Blob Storage and automatically extracts its text.
     /// </summary>
     /// <param name="file">The uploaded file.</param>
-    /// <returns>A response containing the unique identifier of the uploaded file.</returns>
-    /// <response code="200">Returns the unique file identifier.</response>
-    /// <response code="400">If the file is not a valid PDF.</response>
+    /// <returns>A response containing the unique identifier and the extracted text.</returns>
+    /// <response code="200">Returns the unique file identifier and extracted text.</response>
+    /// <response code="400">If the file is not a valid PDF or is encrypted.</response>
     /// <response code="413">If the file size exceeds 2MB.</response>
     /// <response code="401">If the request is unauthorized.</response>
     [HttpPost]
@@ -48,7 +55,10 @@ public class UploadController(IBlobStorageService blobStorageService) : Controll
         // 1. Enforce 2MB size limit
         if (file.Length > MaxFileSizeBytes)
         {
-            return StatusCode(StatusCodes.Status413PayloadTooLarge, new { Message = "File size exceeds 2MB limit." });
+            return StatusCode(
+                StatusCodes.Status413PayloadTooLarge,
+                new { Message = "File size exceeds 2MB limit." }
+            );
         }
 
         // 2. Validate MIME type and extension
@@ -64,13 +74,33 @@ public class UploadController(IBlobStorageService blobStorageService) : Controll
             string uniqueFileName = $"{Guid.NewGuid()}.pdf";
 
             using var stream = file.OpenReadStream();
-            await _blobStorageService.UploadAsync(stream, uniqueFileName, file.ContentType).ConfigureAwait(false);
+            await _blobStorageService
+                .UploadAsync(stream, uniqueFileName, file.ContentType)
+                .ConfigureAwait(false);
 
-            return Ok(new { FileId = uniqueFileName });
+            // 4. Extract text automatically
+            using var extractStream = file.OpenReadStream();
+            string extractedText;
+            try
+            {
+                extractedText = await _documentIntelligenceService
+                    .ExtractTextAsync(extractStream)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                // Capture corrupt/encrypted PDF errors and report to user amigably
+                return BadRequest(new { Message = ex.Message });
+            }
+
+            return Ok(new { FileId = uniqueFileName, ExtractedText = extractedText });
         }
         catch (Exception ex)
         {
-            return StatusCode(StatusCodes.Status500InternalServerError, new { Message = "An error occurred during file upload.", Detail = ex.Message });
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new { Message = "An error occurred during file upload.", Detail = ex.Message }
+            );
         }
     }
 }

@@ -15,8 +15,10 @@ namespace CvMatchApi.Services;
 /// <param name="blobServiceClient">The Microsoft Azure Blob Service client.</param>
 public class BlobStorageService(BlobServiceClient blobServiceClient) : IBlobStorageService
 {
-    private readonly BlobServiceClient _blobServiceClient = blobServiceClient ?? throw new ArgumentNullException(nameof(blobServiceClient));
-    private readonly string _containerName = Environment.GetEnvironmentVariable("AZURE_STORAGE_CONTAINER_NAME") ?? "resumes-pdf";
+    private readonly BlobServiceClient _blobServiceClient =
+        blobServiceClient ?? throw new ArgumentNullException(nameof(blobServiceClient));
+    private readonly string _containerName =
+        Environment.GetEnvironmentVariable("AZURE_STORAGE_CONTAINER_NAME") ?? "resumes-pdf";
 
     /// <inheritdoc />
     public async Task UploadAsync(Stream stream, string fileName, string contentType)
@@ -39,9 +41,24 @@ public class BlobStorageService(BlobServiceClient blobServiceClient) : IBlobStor
         var blobClient = containerClient.GetBlobClient(fileName);
         var options = new BlobUploadOptions
         {
-            HttpHeaders = new BlobHttpHeaders { ContentType = contentType }
+            HttpHeaders = new BlobHttpHeaders { ContentType = contentType },
         };
 
         await blobClient.UploadAsync(stream, options).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<Stream> DownloadAsync(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            throw new ArgumentException("Filename cannot be null or whitespace.", nameof(fileName));
+        }
+
+        var containerClient = _blobServiceClient.GetBlobContainerClient(_containerName);
+        var blobClient = containerClient.GetBlobClient(fileName);
+
+        var response = await blobClient.DownloadStreamingAsync().ConfigureAwait(false);
+        return response.Value.Content;
     }
 }

@@ -1,14 +1,16 @@
 using System;
 using System.IO;
 using System.Text;
-using Azure.Storage.Blobs;
+using Azure.AI.FormRecognizer.DocumentAnalysis;
 using Azure.AI.OpenAI;
-using Microsoft.Azure.Cosmos;
+using Azure.Identity;
+using Azure.Storage.Blobs;
 using CvMatchApi.Data;
 using CvMatchApi.Middleware;
 using CvMatchApi.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Azure.Cosmos;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -82,11 +84,28 @@ var openAiEndpoint = Environment.GetEnvironmentVariable("AZURE_OPENAI_ENDPOINT")
 var openAiKey = Environment.GetEnvironmentVariable("AZURE_OPENAI_KEY");
 if (!string.IsNullOrEmpty(openAiEndpoint) && !string.IsNullOrEmpty(openAiKey))
 {
-    builder.Services.AddSingleton(new AzureOpenAIClient(new Uri(openAiEndpoint), new System.ClientModel.ApiKeyCredential(openAiKey)));
+    builder.Services.AddSingleton(
+        new AzureOpenAIClient(
+            new Uri(openAiEndpoint),
+            new System.ClientModel.ApiKeyCredential(openAiKey)
+        )
+    );
 }
 
 // Register Profile Structuring Service
 builder.Services.AddScoped<IProfileStructuringService, ProfileStructuringService>();
+
+// Configure Azure AI Document Intelligence Client using Managed Identity
+var dintelEndpoint = Environment.GetEnvironmentVariable("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT");
+if (!string.IsNullOrEmpty(dintelEndpoint))
+{
+    builder.Services.AddSingleton(
+        new DocumentAnalysisClient(new Uri(dintelEndpoint), new DefaultAzureCredential())
+    );
+}
+
+// Register Document Intelligence Service
+builder.Services.AddScoped<IDocumentIntelligenceService, DocumentIntelligenceService>();
 
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
