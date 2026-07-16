@@ -36,7 +36,9 @@ public class ApiTester
             if (ping.StatusCode != HttpStatusCode.OK)
             {
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"Error: API returned status {ping.StatusCode}. Is it fully booted?");
+                Console.WriteLine(
+                    $"Error: API returned status {ping.StatusCode}. Is it fully booted?"
+                );
                 Console.ResetColor();
                 return;
             }
@@ -44,7 +46,9 @@ public class ApiTester
         catch (Exception)
         {
             Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine($"Error: API is not running at {_baseUrl}. Please start the API first.");
+            Console.WriteLine(
+                $"Error: API is not running at {_baseUrl}. Please start the API first."
+            );
             Console.ResetColor();
             return;
         }
@@ -80,6 +84,26 @@ public class ApiTester
         // Test 8: Verify upload fails with large file size (> 2MB)
         await TestLargePdfUploadAsync(oauthToken).ConfigureAwait(false);
 
+        // --- NEW TESTS FOR CREDIT CONTROL MIDDLEWARE ---
+        Console.WriteLine("\n--- Testing CV Optimization & Credit Control Middleware ---");
+
+        // Clear usage logs from previous runs for a deterministic test
+        await ClearUsageLogsAsync().ConfigureAwait(false);
+
+        // Test 9: Verify optimize without JWT returns 401 Unauthorized
+        await TestUnauthorizedOptimizeAsync().ConfigureAwait(false);
+
+        // Test 10-12: Execute 3 successful optimizations (200 OK)
+        await TestOptimizeCvAsync(oauthToken, 1).ConfigureAwait(false);
+        await TestOptimizeCvAsync(oauthToken, 2).ConfigureAwait(false);
+        await TestOptimizeCvAsync(oauthToken, 3).ConfigureAwait(false);
+
+        // Test 13: Execute 4th optimization and expect 429 Too Many Requests
+        await TestExceededCreditsOptimizeAsync(oauthToken).ConfigureAwait(false);
+
+        // Test 14: Verify 3 usage logs are registered in Azure SQL DB
+        await VerifyUsageLogCountInDatabaseAsync(3).ConfigureAwait(false);
+
         Console.WriteLine("==================================================");
         Console.WriteLine("        API Authentication & Upload Tests Complete ");
         Console.WriteLine("==================================================");
@@ -89,7 +113,10 @@ public class ApiTester
     {
         Console.Write("Test 1: GET /api/auth/login (Google Consent redirect)... ");
         var response = await _client.GetAsync($"{_baseUrl}/api/auth/login").ConfigureAwait(false);
-        if (response.StatusCode == HttpStatusCode.Redirect || response.StatusCode == HttpStatusCode.Found)
+        if (
+            response.StatusCode == HttpStatusCode.Redirect
+            || response.StatusCode == HttpStatusCode.Found
+        )
         {
             var location = response.Headers.Location?.ToString();
             if (location != null && location.Contains("accounts.google.com"))
@@ -108,10 +135,14 @@ public class ApiTester
     private async Task<string?> TestGoogleCallbackAndRegistrationAsync()
     {
         Console.Write("Test 2: GET /api/auth/callback?code=test-google-code... ");
-        var response = await _client.GetAsync($"{_baseUrl}/api/auth/callback?code=test-google-code").ConfigureAwait(false);
+        var response = await _client
+            .GetAsync($"{_baseUrl}/api/auth/callback?code=test-google-code")
+            .ConfigureAwait(false);
         if (response.StatusCode == HttpStatusCode.OK)
         {
-            var json = await response.Content.ReadFromJsonAsync<JsonElement>().ConfigureAwait(false);
+            var json = await response
+                .Content.ReadFromJsonAsync<JsonElement>()
+                .ConfigureAwait(false);
             if (json.TryGetProperty("token", out var tokenProp))
             {
                 string token = tokenProp.GetString()!;
@@ -138,9 +169,11 @@ public class ApiTester
                 throw new ArgumentException("Invalid JWT format.");
             }
 
-            // Decode base64 payload
             string payloadBase64 = parts[1];
-            payloadBase64 = payloadBase64.PadRight(payloadBase64.Length + (4 - payloadBase64.Length % 4) % 4, '=');
+            payloadBase64 = payloadBase64.PadRight(
+                payloadBase64.Length + (4 - payloadBase64.Length % 4) % 4,
+                '='
+            );
             byte[] payloadBytes = Convert.FromBase64String(payloadBase64);
             string payloadJson = Encoding.UTF8.GetString(payloadBytes);
 
@@ -152,11 +185,12 @@ public class ApiTester
                 var expDateTime = DateTimeOffset.FromUnixTimeSeconds(expSeconds).UtcDateTime;
                 double hoursLeft = (expDateTime - DateTime.UtcNow).TotalHours;
 
-                // Should be approximately 24 hours (allowing 1 minute execution tolerance)
                 if (hoursLeft > 23.9 && hoursLeft <= 24.0)
                 {
                     Console.ForegroundColor = ConsoleColor.Green;
-                    Console.WriteLine($"[SUCCESS] Expires in {hoursLeft:F2} hours (Correct 24h lifespan).");
+                    Console.WriteLine(
+                        $"[SUCCESS] Expires in {hoursLeft:F2} hours (Correct 24h lifespan)."
+                    );
                     Console.ResetColor();
                     return;
                 }
@@ -182,7 +216,9 @@ public class ApiTester
         if (string.IsNullOrEmpty(connStr))
         {
             Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine("[FAILURE] Azure SQL Connection string environment variable is missing.");
+            Console.WriteLine(
+                "[FAILURE] Azure SQL Connection string environment variable is missing."
+            );
             Console.ResetColor();
             return;
         }
@@ -191,7 +227,10 @@ public class ApiTester
         {
             using var conn = new SqlConnection(connStr);
             await conn.OpenAsync().ConfigureAwait(false);
-            using var cmd = new SqlCommand("SELECT Name, RegisteredAt FROM Users WHERE Email = 'test-google-oauth@example.com';", conn);
+            using var cmd = new SqlCommand(
+                "SELECT Name, RegisteredAt FROM Users WHERE Email = 'test-google-oauth@example.com';",
+                conn
+            );
             using var reader = await cmd.ExecuteReaderAsync().ConfigureAwait(false);
             if (await reader.ReadAsync().ConfigureAwait(false))
             {
@@ -231,7 +270,9 @@ public class ApiTester
         var response = await _client.SendAsync(request).ConfigureAwait(false);
         if (response.StatusCode == HttpStatusCode.OK)
         {
-            var json = await response.Content.ReadFromJsonAsync<JsonElement>().ConfigureAwait(false);
+            var json = await response
+                .Content.ReadFromJsonAsync<JsonElement>()
+                .ConfigureAwait(false);
             if (json.TryGetProperty("fileId", out var fileIdProp))
             {
                 Console.ForegroundColor = ConsoleColor.Green;
@@ -251,7 +292,10 @@ public class ApiTester
     {
         Console.Write("Test 6: Requesting /api/upload with invalid JWT... ");
         using var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/api/upload");
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "invalid-token-string");
+        request.Headers.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            "invalid-token-string"
+        );
 
         using var content = new MultipartFormDataContent();
         var fileContent = new ByteArrayContent(new byte[100]);
@@ -315,7 +359,10 @@ public class ApiTester
         request.Content = content;
 
         var response = await _client.SendAsync(request).ConfigureAwait(false);
-        if (response.StatusCode == HttpStatusCode.RequestEntityTooLarge || response.StatusCode == (HttpStatusCode)413)
+        if (
+            response.StatusCode == HttpStatusCode.RequestEntityTooLarge
+            || response.StatusCode == (HttpStatusCode)413
+        )
         {
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine("[SUCCESS] Rejected with 413 Payload Too Large.");
@@ -325,7 +372,174 @@ public class ApiTester
         {
             string err = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
             Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine($"[FAILURE] Returned {response.StatusCode} instead of 413. Detail: {err}");
+            Console.WriteLine(
+                $"[FAILURE] Returned {response.StatusCode} instead of 413. Detail: {err}"
+            );
+            Console.ResetColor();
+        }
+    }
+
+    private async Task ClearUsageLogsAsync()
+    {
+        string? connStr = Environment.GetEnvironmentVariable("AZURE_SQL_CONNECTION_STRING");
+        if (string.IsNullOrEmpty(connStr))
+            return;
+
+        try
+        {
+            using var conn = new SqlConnection(connStr);
+            await conn.OpenAsync().ConfigureAwait(false);
+
+            // Delete previous usage logs of the test user
+            string sql =
+                "DELETE FROM UsageLogs WHERE UserId IN (SELECT Id FROM Users WHERE Email = 'test-google-oauth@example.com');";
+            using var cmd = new SqlCommand(sql, conn);
+            await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[WARNING] Could not clear previous usage logs: {ex.Message}");
+        }
+    }
+
+    private async Task TestUnauthorizedOptimizeAsync()
+    {
+        Console.Write("Test 9: POST /api/cv/optimize without JWT... ");
+        var body = new { JobTitle = "Software Engineer", JobDescription = "C# and SQL" };
+        var response = await _client
+            .PostAsJsonAsync($"{_baseUrl}/api/cv/optimize", body)
+            .ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("[SUCCESS] Rejected with 401 Unauthorized.");
+            Console.ResetColor();
+        }
+        else
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"[FAILURE] Returned {response.StatusCode} instead of 401.");
+            Console.ResetColor();
+        }
+    }
+
+    private async Task TestOptimizeCvAsync(string token, int runNumber)
+    {
+        Console.Write(
+            $"Test {9 + runNumber}: POST /api/cv/optimize (Request #{runNumber}) with JWT... "
+        );
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/api/cv/optimize");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var body = new
+        {
+            JobTitle = $"Fullstack Dev #{runNumber}",
+            JobDescription = "React and .NET",
+        };
+        request.Content = JsonContent.Create(body);
+
+        var response = await _client.SendAsync(request).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.OK)
+        {
+            var json = await response
+                .Content.ReadFromJsonAsync<JsonElement>()
+                .ConfigureAwait(false);
+            if (json.TryGetProperty("logId", out _))
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("[SUCCESS] 200 OK. Usage log created.");
+                Console.ResetColor();
+                return;
+            }
+        }
+
+        string err = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.WriteLine($"[FAILURE] Status: {response.StatusCode}, Detail: {err}");
+        Console.ResetColor();
+    }
+
+    private async Task TestExceededCreditsOptimizeAsync(string token)
+    {
+        Console.Write("Test 13: POST /api/cv/optimize (Request #4 - Exceed limit) with JWT... ");
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/api/cv/optimize");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var body = new { JobTitle = "Cloud Architect", JobDescription = "Azure and Terraform" };
+        request.Content = JsonContent.Create(body);
+
+        var response = await _client.SendAsync(request).ConfigureAwait(false);
+        if (
+            response.StatusCode == HttpStatusCode.TooManyRequests
+            || response.StatusCode == (HttpStatusCode)429
+        )
+        {
+            var json = await response
+                .Content.ReadFromJsonAsync<JsonElement>()
+                .ConfigureAwait(false);
+            if (
+                json.TryGetProperty("message", out var msgProp)
+                || json.TryGetProperty("Message", out msgProp)
+            )
+            {
+                string msg = msgProp.GetString()!;
+                if (msg == "Límite de generación gratuito alcanzado (Máximo 3 CVs)")
+                {
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine(
+                        "[SUCCESS] Rejected with 429 Too Many Requests and expected error message."
+                    );
+                    Console.ResetColor();
+                    return;
+                }
+                else
+                {
+                    throw new Exception($"Message was '{msg}' instead of expected warning.");
+                }
+            }
+        }
+
+        string err = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.WriteLine($"[FAILURE] Status: {response.StatusCode}, Detail: {err}");
+        Console.ResetColor();
+    }
+
+    private async Task VerifyUsageLogCountInDatabaseAsync(int expectedCount)
+    {
+        Console.Write(
+            $"Test 14: Verifying exactly {expectedCount} logs exist in Azure SQL 'UsageLogs' table... "
+        );
+        string? connStr = Environment.GetEnvironmentVariable("AZURE_SQL_CONNECTION_STRING");
+        if (string.IsNullOrEmpty(connStr))
+            return;
+
+        try
+        {
+            using var conn = new SqlConnection(connStr);
+            await conn.OpenAsync().ConfigureAwait(false);
+            string sql =
+                "SELECT COUNT(*) FROM UsageLogs WHERE UserId IN (SELECT Id FROM Users WHERE Email = 'test-google-oauth@example.com');";
+            using var cmd = new SqlCommand(sql, conn);
+            int count = (int)(await cmd.ExecuteScalarAsync().ConfigureAwait(false) ?? 0);
+
+            if (count == expectedCount)
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine($"[SUCCESS] Found exactly {count} usage records.");
+                Console.ResetColor();
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"[FAILURE] Found {count} records instead of {expectedCount}.");
+                Console.ResetColor();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"[FAILURE] Database check failed: {ex.Message}");
             Console.ResetColor();
         }
     }

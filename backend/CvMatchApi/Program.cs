@@ -3,6 +3,7 @@ using System.IO;
 using System.Text;
 using Azure.Storage.Blobs;
 using CvMatchApi.Data;
+using CvMatchApi.Middleware;
 using CvMatchApi.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
@@ -70,6 +71,31 @@ using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     context.Database.EnsureCreated();
+
+    // Ensure JobPostings and UsageLogs tables are explicitly created since EF Core's EnsureCreated()
+    // does not update schema if the database already exists.
+    var sql = @"
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'JobPostings')
+        BEGIN
+            CREATE TABLE JobPostings (
+                Id INT IDENTITY(1,1) PRIMARY KEY,
+                Title NVARCHAR(MAX) NOT NULL,
+                Description NVARCHAR(MAX) NOT NULL,
+                CreatedAt DATETIME2 NOT NULL
+            );
+        END
+
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'UsageLogs')
+        BEGIN
+            CREATE TABLE UsageLogs (
+                Id INT IDENTITY(1,1) PRIMARY KEY,
+                UserId INT NOT NULL,
+                Timestamp DATETIME2 NOT NULL,
+                Description NVARCHAR(MAX) NOT NULL,
+                CONSTRAINT FK_UsageLogs_Users_UserId FOREIGN KEY (UserId) REFERENCES Users(Id) ON DELETE CASCADE
+            );
+        END";
+    context.Database.ExecuteSqlRaw(sql);
 }
 
 // Configure the HTTP request pipeline.
@@ -83,6 +109,9 @@ app.MapGet("/", () => new { Message = "Hola Mundo" });
 // Authentication must be called before Authorization
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Register Credit Control Middleware
+app.UseMiddleware<CreditControlMiddleware>();
 
 app.MapControllers();
 

@@ -1,5 +1,5 @@
-using Microsoft.EntityFrameworkCore;
 using CvMatchApi.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace CvMatchApi.Data;
 
@@ -12,14 +12,23 @@ public class AppDbContext : DbContext
     /// Initializes a new instance of the <see cref="AppDbContext"/> class with the specified options.
     /// </summary>
     /// <param name="options">The context options for configuration.</param>
-    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
-    {
-    }
+    public AppDbContext(DbContextOptions<AppDbContext> options)
+        : base(options) { }
 
     /// <summary>
     /// Gets or sets the collection of registered users in the database.
     /// </summary>
     public DbSet<User> Users { get; set; }
+
+    /// <summary>
+    /// Gets or sets the collection of job postings in the database.
+    /// </summary>
+    public DbSet<JobPosting> JobPostings { get; set; }
+
+    /// <summary>
+    /// Gets or sets the collection of usage logs in the database.
+    /// </summary>
+    public DbSet<UsageLog> UsageLogs { get; set; }
 
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -32,8 +41,6 @@ public class AppDbContext : DbContext
         base.OnModelCreating(modelBuilder);
 
         // Ensure email is unique in the database index
-        modelBuilder.Entity<User>()
-            .HasIndex(u => u.Email)
-            .IsUnique();
+        modelBuilder.Entity<User>().HasIndex(u => u.Email).IsUnique();
     }
 }
