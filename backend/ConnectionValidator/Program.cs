@@ -153,6 +153,9 @@ public static class Program
         Console.WriteLine("\n==================================================");
         Console.WriteLine("        DB Connection Validation Complete         ");
         Console.WriteLine("==================================================");
+
+        // Run API tests
+        await new ApiTester().RunTestsAsync().ConfigureAwait(false);
     }
 
     private static string? FindEnvFile(string startDir)
