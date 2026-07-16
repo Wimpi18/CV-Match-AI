@@ -1,5 +1,5 @@
 using System;
-using System.Text.Json.Serialization;
+using Newtonsoft.Json;
 
 namespace CvMatchApi.Models;
 
@@ -11,48 +11,48 @@ public class UserProfileDocument
     /// <summary>
     /// Gets or sets the unique document identifier in Cosmos DB (matches candidate's email).
     /// </summary>
-    [JsonPropertyName("id")]
+    [JsonProperty("id")]
     public string Id { get; set; } = string.Empty;
 
     /// <summary>
     /// Gets or sets the partition key in Cosmos DB (matches candidate's email).
     /// </summary>
-    [JsonPropertyName("userId")]
+    [JsonProperty("userId")]
     public string UserId { get; set; } = string.Empty;
 
     /// <summary>
     /// Gets or sets the candidate's personal information.
     /// </summary>
-    [JsonPropertyName("personalInfo")]
+    [JsonProperty("personalInfo")]
     public object PersonalInfo { get; set; } = new();
 
     /// <summary>
     /// Gets or sets the candidate's professional work experience.
     /// </summary>
-    [JsonPropertyName("experience")]
+    [JsonProperty("experience")]
     public object Experience { get; set; } = new();
 
     /// <summary>
     /// Gets or sets the candidate's academic education history.
     /// </summary>
-    [JsonPropertyName("education")]
+    [JsonProperty("education")]
     public object Education { get; set; } = new();
 
     /// <summary>
     /// Gets or sets the candidate's categorized standard and custom skills.
     /// </summary>
-    [JsonPropertyName("skills")]
+    [JsonProperty("skills")]
     public object Skills { get; set; } = new();
 
     /// <summary>
     /// Gets or sets the raw unstructured text extracted from the source PDF CV.
     /// </summary>
-    [JsonPropertyName("rawText")]
+    [JsonProperty("rawText")]
     public string RawText { get; set; } = string.Empty;
 
     /// <summary>
     /// Gets or sets the timestamp when this profile was last generated/updated.
     /// </summary>
-    [JsonPropertyName("updatedAt")]
+    [JsonProperty("updatedAt")]
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

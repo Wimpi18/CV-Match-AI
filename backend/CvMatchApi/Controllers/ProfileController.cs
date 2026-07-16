@@ -65,14 +65,13 @@ public class ProfileController(
             ).ConfigureAwait(false);
 
             // 3. Deserialize JSON to structure parts for Cosmos DB document properties
-            using var jsonDocument = JsonDocument.Parse(structuredJson);
-            var root = jsonDocument.RootElement;
+            var parsedProfile = Newtonsoft.Json.Linq.JObject.Parse(structuredJson);
 
             // Extract parts or fallback if properties are missing
-            var personalInfo = root.TryGetProperty("personalInfo", out var pInfo) ? JsonSerializer.Deserialize<object>(pInfo.GetRawText()) : new object();
-            var experience = root.TryGetProperty("experience", out var exp) ? JsonSerializer.Deserialize<object>(exp.GetRawText()) : new object();
-            var education = root.TryGetProperty("education", out var edu) ? JsonSerializer.Deserialize<object>(edu.GetRawText()) : new object();
-            var skills = root.TryGetProperty("skills", out var sk) ? JsonSerializer.Deserialize<object>(sk.GetRawText()) : new object();
+            var personalInfo = parsedProfile["personalInfo"] ?? new Newtonsoft.Json.Linq.JObject();
+            var experience = parsedProfile["experience"] ?? new Newtonsoft.Json.Linq.JArray();
+            var education = parsedProfile["education"] ?? new Newtonsoft.Json.Linq.JArray();
+            var skills = parsedProfile["skills"] ?? new Newtonsoft.Json.Linq.JObject();
 
             // 4. Build document to upsert
             var document = new UserProfileDocument
