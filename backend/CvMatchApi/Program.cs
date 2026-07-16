@@ -2,9 +2,11 @@ using System;
 using System.IO;
 using System.Text;
 using Azure.Storage.Blobs;
+using CvMatchApi.Data;
 using CvMatchApi.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Tokens;
@@ -16,6 +18,11 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllers();
+
+// Configure AppDbContext with Azure SQL Database connection string
+var sqlConnectionString = Environment.GetEnvironmentVariable("AZURE_SQL_CONNECTION_STRING");
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlServer(sqlConnectionString));
 
 // Configure JWT Authentication
 var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY") ?? "SuperSecretSecureKeyForCvMatchAi2026!";
@@ -57,6 +64,13 @@ builder.Services.AddScoped<IBlobStorageService, BlobStorageService>();
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
+
+// 2. Initialize database / ensure tables exist
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    context.Database.EnsureCreated();
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

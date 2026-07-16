@@ -4,8 +4,10 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Microsoft.Data.SqlClient;
 
 namespace ConnectionValidator;
 
@@ -16,13 +18,15 @@ public class ApiTester
 
     public ApiTester()
     {
-        _client = new HttpClient();
+        // Disable auto-redirect so we can inspect Google OAuth redirection responses
+        var handler = new HttpClientHandler { AllowAutoRedirect = false };
+        _client = new HttpClient(handler);
     }
 
     public async Task RunTestsAsync()
     {
         Console.WriteLine("\n==================================================");
-        Console.WriteLine("        Starting API Upload Endpoint Tests       ");
+        Console.WriteLine("        Starting API Authentication & Upload Tests ");
         Console.WriteLine("==================================================");
 
         // Check if API is running first
@@ -45,60 +49,66 @@ public class ApiTester
             return;
         }
 
-        // Test 1: Verify Unauthorized Request
-        await TestUnauthorizedUploadAsync().ConfigureAwait(false);
+        // Test 1: Verify Google OAuth Redirect
+        await TestGoogleRedirectAsync().ConfigureAwait(false);
 
-        // Test 2: Obtain Token
-        string? token = await ObtainJwtTokenAsync().ConfigureAwait(false);
-        if (string.IsNullOrEmpty(token))
+        // Test 2: Verify Google Callback, DB registration, and JWT creation
+        string? oauthToken = await TestGoogleCallbackAndRegistrationAsync().ConfigureAwait(false);
+        if (string.IsNullOrEmpty(oauthToken))
         {
             Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine("[FAILURE] Could not obtain JWT token. Skipping remaining tests.");
+            Console.WriteLine("[FAILURE] Google OAuth flow failed. Skipping authorization tests.");
             Console.ResetColor();
             return;
         }
 
-        // Test 3: Upload Valid PDF (< 2MB)
-        await TestValidPdfUploadAsync(token).ConfigureAwait(false);
+        // Test 3: Verify JWT Session Validity and Expiration (Exactly 24 hours)
+        await VerifyJwtExpirationAsync(oauthToken).ConfigureAwait(false);
 
-        // Test 4: Upload Invalid File Type (TXT)
-        await TestInvalidMimeUploadAsync(token).ConfigureAwait(false);
+        // Test 4: Verify User table registration in Azure SQL
+        await VerifyUserInDatabaseAsync().ConfigureAwait(false);
 
-        // Test 5: Upload Large PDF (> 2MB)
-        await TestLargePdfUploadAsync(token).ConfigureAwait(false);
+        // Test 5: Verify upload with Google OAuth JWT token
+        await TestValidPdfUploadAsync(oauthToken).ConfigureAwait(false);
+
+        // Test 6: Verify upload fails with invalid JWT
+        await TestUnauthorizedUploadAsync().ConfigureAwait(false);
+
+        // Test 7: Verify upload fails with invalid MIME type (TXT)
+        await TestInvalidMimeUploadAsync(oauthToken).ConfigureAwait(false);
+
+        // Test 8: Verify upload fails with large file size (> 2MB)
+        await TestLargePdfUploadAsync(oauthToken).ConfigureAwait(false);
 
         Console.WriteLine("==================================================");
-        Console.WriteLine("        API Upload Endpoint Tests Complete        ");
+        Console.WriteLine("        API Authentication & Upload Tests Complete ");
         Console.WriteLine("==================================================");
     }
 
-    private async Task TestUnauthorizedUploadAsync()
+    private async Task TestGoogleRedirectAsync()
     {
-        Console.Write("Test 1: Requesting /api/upload without JWT... ");
-        using var content = new MultipartFormDataContent();
-        var fileContent = new ByteArrayContent(new byte[100]);
-        fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse("application/pdf");
-        content.Add(fileContent, "file", "test.pdf");
-
-        var response = await _client.PostAsync($"{_baseUrl}/api/upload", content).ConfigureAwait(false);
-        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        Console.Write("Test 1: GET /api/auth/login (Google Consent redirect)... ");
+        var response = await _client.GetAsync($"{_baseUrl}/api/auth/login").ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.Redirect || response.StatusCode == HttpStatusCode.Found)
         {
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine("[SUCCESS] Rejected with 401 Unauthorized.");
-            Console.ResetColor();
+            var location = response.Headers.Location?.ToString();
+            if (location != null && location.Contains("accounts.google.com"))
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("[SUCCESS] Redirected to Google Consent screen.");
+                Console.ResetColor();
+                return;
+            }
         }
-        else
-        {
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine($"[FAILURE] Returned {response.StatusCode} instead of 401.");
-            Console.ResetColor();
-        }
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.WriteLine($"[FAILURE] Returned {response.StatusCode} or Location is incorrect.");
+        Console.ResetColor();
     }
 
-    private async Task<string?> ObtainJwtTokenAsync()
+    private async Task<string?> TestGoogleCallbackAndRegistrationAsync()
     {
-        Console.Write("Test 2: Requesting test token from /api/auth/token... ");
-        var response = await _client.PostAsync($"{_baseUrl}/api/auth/token", null).ConfigureAwait(false);
+        Console.Write("Test 2: GET /api/auth/callback?code=test-google-code... ");
+        var response = await _client.GetAsync($"{_baseUrl}/api/auth/callback?code=test-google-code").ConfigureAwait(false);
         if (response.StatusCode == HttpStatusCode.OK)
         {
             var json = await response.Content.ReadFromJsonAsync<JsonElement>().ConfigureAwait(false);
@@ -106,7 +116,7 @@ public class ApiTester
             {
                 string token = tokenProp.GetString()!;
                 Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine("[SUCCESS] Token received.");
+                Console.WriteLine("[SUCCESS] User registered & signed JWT session received.");
                 Console.ResetColor();
                 return token;
             }
@@ -117,16 +127,105 @@ public class ApiTester
         return null;
     }
 
+    private async Task VerifyJwtExpirationAsync(string token)
+    {
+        Console.Write("Test 3: Checking JWT claims and 24-hour expiration... ");
+        try
+        {
+            var parts = token.Split('.');
+            if (parts.Length != 3)
+            {
+                throw new ArgumentException("Invalid JWT format.");
+            }
+
+            // Decode base64 payload
+            string payloadBase64 = parts[1];
+            payloadBase64 = payloadBase64.PadRight(payloadBase64.Length + (4 - payloadBase64.Length % 4) % 4, '=');
+            byte[] payloadBytes = Convert.FromBase64String(payloadBase64);
+            string payloadJson = Encoding.UTF8.GetString(payloadBytes);
+
+            using var doc = JsonDocument.Parse(payloadJson);
+            var root = doc.RootElement;
+            if (root.TryGetProperty("exp", out var expProp))
+            {
+                long expSeconds = expProp.GetInt64();
+                var expDateTime = DateTimeOffset.FromUnixTimeSeconds(expSeconds).UtcDateTime;
+                double hoursLeft = (expDateTime - DateTime.UtcNow).TotalHours;
+
+                // Should be approximately 24 hours (allowing 1 minute execution tolerance)
+                if (hoursLeft > 23.9 && hoursLeft <= 24.0)
+                {
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"[SUCCESS] Expires in {hoursLeft:F2} hours (Correct 24h lifespan).");
+                    Console.ResetColor();
+                    return;
+                }
+                else
+                {
+                    throw new Exception($"Lifespan is {hoursLeft:F2} hours instead of 24.");
+                }
+            }
+            throw new Exception("Claim 'exp' not found.");
+        }
+        catch (Exception ex)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"[FAILURE] JWT check failed: {ex.Message}");
+            Console.ResetColor();
+        }
+    }
+
+    private async Task VerifyUserInDatabaseAsync()
+    {
+        Console.Write("Test 4: Verifying user record in Azure SQL 'Users' table... ");
+        string? connStr = Environment.GetEnvironmentVariable("AZURE_SQL_CONNECTION_STRING");
+        if (string.IsNullOrEmpty(connStr))
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine("[FAILURE] Azure SQL Connection string environment variable is missing.");
+            Console.ResetColor();
+            return;
+        }
+
+        try
+        {
+            using var conn = new SqlConnection(connStr);
+            await conn.OpenAsync().ConfigureAwait(false);
+            using var cmd = new SqlCommand("SELECT Name, RegisteredAt FROM Users WHERE Email = 'test-google-oauth@example.com';", conn);
+            using var reader = await cmd.ExecuteReaderAsync().ConfigureAwait(false);
+            if (await reader.ReadAsync().ConfigureAwait(false))
+            {
+                string name = reader.GetString(0);
+                DateTime regTime = reader.GetDateTime(1);
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine($"[SUCCESS] User '{name}' found. RegisteredAt: {regTime} (UTC).");
+                Console.ResetColor();
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("[FAILURE] User record not found in database.");
+                Console.ResetColor();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"[FAILURE] Database check failed: {ex.Message}");
+            Console.ResetColor();
+        }
+    }
+
     private async Task TestValidPdfUploadAsync(string token)
     {
-        Console.Write("Test 3: Uploading valid PDF (1KB) with JWT... ");
+        Console.Write("Test 5: Uploading valid PDF (1KB) with Google JWT... ");
         using var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/api/upload");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         using var content = new MultipartFormDataContent();
-        var fileContent = new ByteArrayContent(new byte[1024]); // 1KB
+        var fileContent = new ByteArrayContent(new byte[1024]);
         fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse("application/pdf");
-        content.Add(fileContent, "file", "cv_base.pdf");
+        content.Add(fileContent, "file", "google_cv_upload.pdf");
         request.Content = content;
 
         var response = await _client.SendAsync(request).ConfigureAwait(false);
@@ -141,23 +240,50 @@ public class ApiTester
                 return;
             }
         }
-        
+
         string err = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
         Console.ForegroundColor = ConsoleColor.Red;
         Console.WriteLine($"[FAILURE] Status: {response.StatusCode}, Detail: {err}");
         Console.ResetColor();
     }
 
+    private async Task TestUnauthorizedUploadAsync()
+    {
+        Console.Write("Test 6: Requesting /api/upload with invalid JWT... ");
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/api/upload");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "invalid-token-string");
+
+        using var content = new MultipartFormDataContent();
+        var fileContent = new ByteArrayContent(new byte[100]);
+        fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse("application/pdf");
+        content.Add(fileContent, "file", "test.pdf");
+        request.Content = content;
+
+        var response = await _client.SendAsync(request).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("[SUCCESS] Rejected with 401 Unauthorized.");
+            Console.ResetColor();
+        }
+        else
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"[FAILURE] Returned {response.StatusCode} instead of 401.");
+            Console.ResetColor();
+        }
+    }
+
     private async Task TestInvalidMimeUploadAsync(string token)
     {
-        Console.Write("Test 4: Uploading non-PDF file (TXT) with JWT... ");
+        Console.Write("Test 7: Uploading non-PDF file (TXT) with Google JWT... ");
         using var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/api/upload");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         using var content = new MultipartFormDataContent();
         var fileContent = new ByteArrayContent(new byte[500]);
         fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse("text/plain");
-        content.Add(fileContent, "file", "cv_base.txt");
+        content.Add(fileContent, "file", "cv.txt");
         request.Content = content;
 
         var response = await _client.SendAsync(request).ConfigureAwait(false);
@@ -177,16 +303,15 @@ public class ApiTester
 
     private async Task TestLargePdfUploadAsync(string token)
     {
-        Console.Write("Test 5: Uploading large PDF (2.1MB) with JWT... ");
+        Console.Write("Test 8: Uploading large PDF (2.1MB) with Google JWT... ");
         using var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/api/upload");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         using var content = new MultipartFormDataContent();
-        // 2.1 MB = 2.1 * 1024 * 1024 bytes
         var size = (int)(2.1 * 1024 * 1024);
         var fileContent = new ByteArrayContent(new byte[size]);
         fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse("application/pdf");
-        content.Add(fileContent, "file", "huge_cv.pdf");
+        content.Add(fileContent, "file", "large_cv.pdf");
         request.Content = content;
 
         var response = await _client.SendAsync(request).ConfigureAwait(false);
