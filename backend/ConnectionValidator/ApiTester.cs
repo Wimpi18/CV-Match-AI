@@ -789,13 +789,13 @@ public class ApiTester
 
             var email = "test-google-oauth@example.com";
             var response = await container
-                .ReadItemAsync<JsonElement>(email, new PartitionKey(email))
+                .ReadItemAsync<Newtonsoft.Json.Linq.JObject>(email, new PartitionKey(email))
                 .ConfigureAwait(false);
 
             if (response.StatusCode == HttpStatusCode.OK)
             {
                 var doc = response.Resource;
-                if (doc.TryGetProperty("userId", out var userProp) && userProp.GetString() == email)
+                if (doc["userId"]?.ToString() == email)
                 {
                     Console.ForegroundColor = ConsoleColor.Green;
                     Console.WriteLine(
@@ -848,15 +848,12 @@ public class ApiTester
                     var container = cosmosClient.GetContainer("cvmatch-store", "resumes");
                     var email = "test-google-oauth@example.com";
                     var cosmosResp = await container
-                        .ReadItemAsync<JsonElement>(email, new PartitionKey(email))
+                        .ReadItemAsync<Newtonsoft.Json.Linq.JObject>(email, new PartitionKey(email))
                         .ConfigureAwait(false);
                     if (cosmosResp.StatusCode == HttpStatusCode.OK)
                     {
                         var doc = cosmosResp.Resource;
-                        if (
-                            doc.TryGetProperty("rawText", out var textProp)
-                            && textProp.GetString() == body.CvText
-                        )
+                        if (doc["rawText"]?.ToString() == body.CvText)
                         {
                             Console.ForegroundColor = ConsoleColor.Green;
                             Console.WriteLine(
