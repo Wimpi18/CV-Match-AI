@@ -28,7 +28,8 @@ namespace CvMatchApi.Controllers;
 [Route("api/auth")]
 public class AuthController(AppDbContext context) : ControllerBase
 {
-    private readonly AppDbContext _context = context ?? throw new ArgumentNullException(nameof(context));
+    private readonly AppDbContext _context =
+        context ?? throw new ArgumentNullException(nameof(context));
     private readonly HttpClient _httpClient = new();
 
     /// <summary>
@@ -40,14 +41,19 @@ public class AuthController(AppDbContext context) : ControllerBase
     [ProducesResponseType(StatusCodes.Status302Found)]
     public IActionResult Login()
     {
-        var clientId = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID") ?? "dummy-client-id.apps.googleusercontent.com";
-        var redirectUri = Environment.GetEnvironmentVariable("GOOGLE_CALLBACK_URL") ?? "http://localhost:5008/api/auth/callback";
+        var clientId =
+            Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID")
+            ?? "dummy-client-id.apps.googleusercontent.com";
+        var redirectUri =
+            Environment.GetEnvironmentVariable("GOOGLE_CALLBACK_URL")
+            ?? "http://localhost:5008/api/auth/callback";
 
-        var authorizationUrl = $"https://accounts.google.com/o/oauth2/v2/auth?" +
-                               $"client_id={Uri.EscapeDataString(clientId)}&" +
-                               $"redirect_uri={Uri.EscapeDataString(redirectUri)}&" +
-                               $"response_type=code&" +
-                               $"scope=openid%20email%20profile";
+        var authorizationUrl =
+            $"https://accounts.google.com/o/oauth2/v2/auth?"
+            + $"client_id={Uri.EscapeDataString(clientId)}&"
+            + $"redirect_uri={Uri.EscapeDataString(redirectUri)}&"
+            + $"response_type=code&"
+            + $"scope=openid%20email%20profile";
 
         return Redirect(authorizationUrl);
     }
@@ -72,9 +78,14 @@ public class AuthController(AppDbContext context) : ControllerBase
         string email;
         string name;
 
-        var clientId = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID") ?? "dummy-client-id.apps.googleusercontent.com";
-        var clientSecret = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_SECRET") ?? "dummy-secret";
-        var redirectUri = Environment.GetEnvironmentVariable("GOOGLE_CALLBACK_URL") ?? "http://localhost:5008/api/auth/callback";
+        var clientId =
+            Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID")
+            ?? "dummy-client-id.apps.googleusercontent.com";
+        var clientSecret =
+            Environment.GetEnvironmentVariable("GOOGLE_CLIENT_SECRET") ?? "dummy-secret";
+        var redirectUri =
+            Environment.GetEnvironmentVariable("GOOGLE_CALLBACK_URL")
+            ?? "http://localhost:5008/api/auth/callback";
 
         // 1. Bypass check for integration tests or dummy environments
         if (code == "test-google-code" || clientId.StartsWith("dummy"))
@@ -93,44 +104,65 @@ public class AuthController(AppDbContext context) : ControllerBase
                     { "client_id", clientId },
                     { "client_secret", clientSecret },
                     { "redirect_uri", redirectUri },
-                    { "grant_type", "authorization_code" }
+                    { "grant_type", "authorization_code" },
                 };
 
-                using var response = await _httpClient.PostAsync("https://oauth2.googleapis.com/token", new FormUrlEncodedContent(requestParams)).ConfigureAwait(false);
+                using var response = await _httpClient
+                    .PostAsync(
+                        "https://oauth2.googleapis.com/token",
+                        new FormUrlEncodedContent(requestParams)
+                    )
+                    .ConfigureAwait(false);
                 if (!response.IsSuccessStatusCode)
                 {
-                    string errContent = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                    return BadRequest(new { Message = "Failed to exchange authorization code with Google.", Detail = errContent });
+                    string errContent = await response
+                        .Content.ReadAsStringAsync()
+                        .ConfigureAwait(false);
+                    return BadRequest(
+                        new
+                        {
+                            Message = "Failed to exchange authorization code with Google.",
+                            Detail = errContent,
+                        }
+                    );
                 }
 
-                var tokenResponse = await response.Content.ReadFromJsonAsync<GoogleTokenResponse>().ConfigureAwait(false);
+                var tokenResponse = await response
+                    .Content.ReadFromJsonAsync<GoogleTokenResponse>()
+                    .ConfigureAwait(false);
                 if (tokenResponse == null || string.IsNullOrEmpty(tokenResponse.IdToken))
                 {
                     return BadRequest(new { Message = "No Identity Token returned from Google." });
                 }
 
                 // Validate and decode ID Token
-                var payload = await GoogleJsonWebSignature.ValidateAsync(tokenResponse.IdToken).ConfigureAwait(false);
+                var payload = await GoogleJsonWebSignature
+                    .ValidateAsync(tokenResponse.IdToken)
+                    .ConfigureAwait(false);
                 email = payload.Email;
                 name = payload.Name;
             }
             catch (Exception ex)
             {
-                return BadRequest(new { Message = "Error validating Google ID token.", Detail = ex.Message });
+                return BadRequest(
+                    new { Message = "Error validating Google ID token.", Detail = ex.Message }
+                );
             }
         }
 
         try
         {
             // 2. Register or update user record in Azure SQL database
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == email).ConfigureAwait(false);
+            var user = await _context
+                .Users.FirstOrDefaultAsync(u => u.Email == email)
+                .ConfigureAwait(false);
             if (user == null)
             {
                 user = new User
                 {
                     Email = email,
                     Name = name,
-                    RegisteredAt = DateTime.UtcNow
+                    RegisteredAt = DateTime.UtcNow,
                 };
                 _context.Users.Add(user);
             }
@@ -145,16 +177,37 @@ public class AuthController(AppDbContext context) : ControllerBase
             // 3. Generate signed JWT that expires in 24 hours
             var tokenString = GenerateJwtToken(user.Email, user.Name);
 
-            return Ok(new
+            // 4. Redirect browser to frontend if FRONTEND_URL is set and not a direct JSON request (integration test)
+            var frontendUrl = Environment.GetEnvironmentVariable("FRONTEND_URL");
+            var isIntegrationTest =
+                code == "test-google-code"
+                || (
+                    Request.Headers.TryGetValue("Accept", out var acceptHeader)
+                    && acceptHeader.ToString().Contains("application/json")
+                );
+
+            if (!string.IsNullOrEmpty(frontendUrl) && !isIntegrationTest)
             {
-                Token = tokenString,
-                Email = user.Email,
-                Name = user.Name
-            });
+                var redirectUrl =
+                    $"{frontendUrl.TrimEnd('/')}/?token={Uri.EscapeDataString(tokenString)}&email={Uri.EscapeDataString(user.Email)}&name={Uri.EscapeDataString(user.Name)}";
+                return Redirect(redirectUrl);
+            }
+
+            return Ok(
+                new
+                {
+                    Token = tokenString,
+                    Email = user.Email,
+                    Name = user.Name,
+                }
+            );
         }
         catch (Exception ex)
         {
-            return StatusCode(StatusCodes.Status500InternalServerError, new { Message = "Database error saving user identity.", Detail = ex.Message });
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new { Message = "Database error saving user identity.", Detail = ex.Message }
+            );
         }
     }
 
@@ -172,7 +225,9 @@ public class AuthController(AppDbContext context) : ControllerBase
 
     private string GenerateJwtToken(string email, string name)
     {
-        var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY") ?? "SuperSecretSecureKeyForCvMatchAi2026!";
+        var jwtKey =
+            Environment.GetEnvironmentVariable("JWT_KEY")
+            ?? "SuperSecretSecureKeyForCvMatchAi2026!";
         var jwtIssuer = Environment.GetEnvironmentVariable("JWT_ISSUER") ?? "CvMatchIssuer";
         var jwtAudience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? "CvMatchAudience";
 
@@ -183,7 +238,7 @@ public class AuthController(AppDbContext context) : ControllerBase
         {
             new Claim(ClaimTypes.Email, email),
             new Claim(ClaimTypes.Name, name),
-            new Claim(ClaimTypes.Role, "User")
+            new Claim(ClaimTypes.Role, "User"),
         };
 
         var token = new JwtSecurityToken(

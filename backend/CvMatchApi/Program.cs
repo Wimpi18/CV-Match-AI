@@ -24,6 +24,20 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddControllers();
 
+// Configure CORS to allow Angular frontend
+var frontendUrl = Environment.GetEnvironmentVariable("FRONTEND_URL") ?? "http://localhost:4200";
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy
+            .WithOrigins(frontendUrl.TrimEnd('/'))
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
+});
+
 // Configure AppDbContext with Azure SQL Database connection string
 var sqlConnectionString = Environment.GetEnvironmentVariable("AZURE_SQL_CONNECTION_STRING");
 builder.Services.AddDbContext<AppDbContext>(options => options.UseSqlServer(sqlConnectionString));
@@ -152,6 +166,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.MapGet("/", () => new { Message = "Hola Mundo" });
+
+app.UseCors();
 
 // Authentication must be called before Authorization
 app.UseAuthentication();
