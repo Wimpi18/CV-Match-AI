@@ -330,7 +330,7 @@
                     >
                       @if (isOptimizing()) {
                         <div class="btn-spinner animate-spin"></div>
-                        Optimizando CV con OpenAI...
+                        {{ optimizationStep() }}
                       } @else {
                         Calibrar y Optimizar CV
                         <svg
@@ -379,8 +379,8 @@
                         <div class="circular-score-wrapper">
                           <div
                             class="score-ring"
-                            [class.ring-high]="atsMatchScore()! >= 75"
-                            [class.ring-mid]="atsMatchScore()! >= 50 && atsMatchScore()! < 75"
+                            [class.ring-high]="atsMatchScore()! >= 80"
+                            [class.ring-mid]="atsMatchScore()! >= 50 && atsMatchScore()! < 80"
                             [class.ring-low]="atsMatchScore()! < 50"
                           >
                             <span class="score-number">{{ atsMatchScore() }}%</span>
@@ -390,7 +390,7 @@
 
                         <div class="score-insights">
                           <h4>Estado de Compatibilidad ATS</h4>
-                          @if (atsMatchScore()! >= 75) {
+                          @if (atsMatchScore()! >= 80) {
                             <p class="insight-text text-high">
                               Excelente compatibilidad. Tu perfil cumple con la mayoría de las
                               habilidades clave de la taxonomía del puesto y cuenta con la densidad
@@ -416,28 +416,53 @@
                       <div class="optimized-cv-card">
                         <div class="card-title-row">
                           <h4>CV Optimizado en Formato Markdown</h4>
-                          <button class="btn btn-secondary btn-copy" (click)="copyToClipboard()">
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              width="14"
-                              height="14"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              stroke-width="2"
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                            >
-                              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                              <path
-                                d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
-                              ></path>
-                            </svg>
-                            Copiar Markdown
+                          <button
+                            class="btn btn-secondary btn-copy"
+                            (click)="copyToClipboard()"
+                            [class.btn-copied]="isCopied()"
+                          >
+                            @if (isCopied()) {
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="#10b981"
+                                stroke-width="2.5"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                class="animate-bounce"
+                              >
+                                <polyline points="20 6 9 17 4 12"></polyline>
+                              </svg>
+                              ¡Copiado!
+                            } @else {
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                              >
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                <path
+                                  d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+                                ></path>
+                              </svg>
+                              Copiar CV
+                            }
                           </button>
                         </div>
                         <div class="markdown-preview-box">
-                          <pre><code>{{ optimizedCvMarkdown() }}</code></pre>
+                          <div
+                            [innerHTML]="getRenderedHtml(optimizedCvMarkdown())"
+                            class="markdown-rendered-view"
+                          ></div>
                         </div>
                       </div>
                     </div>

@@ -239,6 +239,17 @@ export class App implements OnInit {
     this.errorMessage.set('');
     this.successMessage.set('');
 
+    // Start pipeline step updates
+    this.optimizationStep.set('Analizando Habilidades...');
+    const intervalId = setInterval(() => {
+      const current = this.optimizationStep();
+      if (current === 'Analizando Habilidades...') {
+        this.optimizationStep.set('Comparando con Oferta...');
+      } else if (current === 'Comparando con Oferta...') {
+        this.optimizationStep.set('Redactando CV...');
+      }
+    }, 2500);
+
     const body = {
       JobTitle: title,
       JobDescription: desc,
@@ -252,6 +263,8 @@ export class App implements OnInit {
       })
       .subscribe({
         next: (response) => {
+          clearInterval(intervalId);
+          this.optimizationStep.set('');
           this.isOptimizing.set(false);
           this.successMessage.set('¡CV optimizado con éxito!');
           setTimeout(() => this.successMessage.set(''), 4000);
@@ -262,6 +275,8 @@ export class App implements OnInit {
           );
         },
         error: (err) => {
+          clearInterval(intervalId);
+          this.optimizationStep.set('');
           this.isOptimizing.set(false);
           let errorText = 'Error al optimizar el CV.';
           if (err.error && typeof err.error === 'object') {
@@ -286,8 +301,12 @@ export class App implements OnInit {
     navigator.clipboard
       .writeText(markdown)
       .then(() => {
+        this.isCopied.set(true);
         this.successMessage.set('¡Copiado al portapapeles!');
-        setTimeout(() => this.successMessage.set(''), 3000);
+        setTimeout(() => {
+          this.successMessage.set('');
+          this.isCopied.set(false);
+        }, 2500);
       })
       .catch(() => {
         this.triggerAlertError('No se pudo copiar al portapapeles.');
@@ -299,6 +318,46 @@ export class App implements OnInit {
     this.optimizedCvMarkdown.set('');
     this.jobTitle.set('');
     this.jobDescription.set('');
+    this.isCopied.set(false);
+    this.optimizationStep.set('');
+  }
+
+  protected getRenderedHtml(markdown: string): string {
+    if (!markdown) return '';
+
+    // Escape basic symbols to prevent raw injections
+    let html = markdown.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    // 1. Headers (###, ##, #)
+    html = html.replace(
+      /^### (.*$)/gim,
+      '<h4 style="margin: 1.25rem 0 0.5rem 0; font-family:\'Outfit\', sans-serif; color:#ffffff; font-size:1.1rem; font-weight:600;">$1</h4>',
+    );
+    html = html.replace(
+      /^## (.*$)/gim,
+      '<h3 style="margin: 1.75rem 0 0.75rem 0; font-family:\'Outfit\', sans-serif; color:#ffffff; font-size:1.25rem; font-weight:600; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.35rem;">$1</h3>',
+    );
+    html = html.replace(
+      /^# (.*$)/gim,
+      '<h2 style="margin: 0 0 1.25rem 0; font-family:\'Outfit\', sans-serif; color:#ffffff; font-size:1.6rem; font-weight: 700;">$1</h2>',
+    );
+
+    // 2. Bold (**text**)
+    html = html.replace(
+      /\*\*(.*?)\*\*/g,
+      '<strong style="color:#ffffff; font-weight:600;">$1</strong>',
+    );
+
+    // 3. Bullet list items (- item)
+    html = html.replace(
+      /^\s*[\-\*]\s+(.*$)/gim,
+      '<li style="margin-left: 1.5rem; margin-bottom: 0.5rem; list-style-type: disc; color:#cbd5e1; line-height: 1.6;">$1</li>',
+    );
+
+    // 4. Double newlines (paragraphs)
+    html = html.replace(/\n\n/g, '<br/><br/>');
+
+    return html;
   }
 
   protected structureProfile(): void {

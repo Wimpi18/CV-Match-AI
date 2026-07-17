@@ -1048,3 +1048,53 @@
     transform: rotate(360deg);
   }
 }
+
+/* Copied Success State */
+.btn-copied {
+  border-color: rgba(16, 185, 129, 0.4) !important;
+  color: #34d399 !important;
+  background: rgba(16, 185, 129, 0.08) !important;
+  transform: scale(1.02);
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.animate-bounce {
+  animation: bounce 1s infinite;
+}
+
+@keyframes bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+/* Markdown HTML Renderer View styles */
+.markdown-rendered-view {
+  text-align: left;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.95rem;
+  color: #cbd5e1;
+  line-height: 1.6;
+}
+
+.markdown-rendered-view h2,
+.markdown-rendered-view h3,
+.markdown-rendered-view h4 {
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.markdown-rendered-view li {
+  margin-left: 1.5rem;
+  margin-bottom: 0.5rem;
+  list-style-type: disc;
+}
+
+.markdown-rendered-view strong {
+  color: #ffffff;
+  font-weight: 600;
+}
