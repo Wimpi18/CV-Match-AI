@@ -35,6 +35,19 @@ export class App implements OnInit {
   protected readonly fileId = signal<string>('');
   protected readonly extractedText = signal<string>('');
 
+  // Optimization signals
+  protected readonly jobTitle = signal<string>('');
+  protected readonly jobDescription = signal<string>('');
+  protected readonly isOptimizing = signal<boolean>(false);
+  protected readonly atsMatchScore = signal<number | null>(null);
+  protected readonly optimizedCvMarkdown = signal<string>('');
+  protected readonly optimizationStep = signal<string>('');
+  protected readonly isCopied = signal<boolean>(false);
+
+  // Structuring state signals
+  protected readonly isStructuring = signal<boolean>(false);
+  protected readonly isStructured = signal<boolean>(false);
+
   ngOnInit(): void {
     this.checkAuthentication();
   }
@@ -204,5 +217,152 @@ export class App implements OnInit {
           this.triggerAlertError(errorText);
         },
       });
+  }
+
+  protected optimizeCv(): void {
+    const desc = this.jobDescription().trim();
+    const title = this.jobTitle().trim();
+
+    if (!title) {
+      this.triggerAlertError('Por favor, ingresa el título del puesto.');
+      return;
+    }
+
+    if (desc.length < 100 || desc.length > 10000) {
+      this.triggerAlertError(
+        'La descripción de la vacante debe tener entre 100 y 10,000 caracteres.',
+      );
+      return;
+    }
+
+    this.isOptimizing.set(true);
+    this.errorMessage.set('');
+    this.successMessage.set('');
+
+    const body = {
+      JobTitle: title,
+      JobDescription: desc,
+    };
+
+    this.http
+      .post<any>(`${this.apiBaseUrl}/api/cv/optimize`, body, {
+        headers: {
+          Authorization: `Bearer ${this.token()}`,
+        },
+      })
+      .subscribe({
+        next: (response) => {
+          this.isOptimizing.set(false);
+          this.successMessage.set('¡CV optimizado con éxito!');
+          setTimeout(() => this.successMessage.set(''), 4000);
+
+          this.atsMatchScore.set(response.atsMatchScore ?? response.AtsMatchScore ?? 0);
+          this.optimizedCvMarkdown.set(
+            response.optimizedCvMarkdown ?? response.OptimizedCvMarkdown ?? '',
+          );
+        },
+        error: (err) => {
+          this.isOptimizing.set(false);
+          let errorText = 'Error al optimizar el CV.';
+          if (err.error && typeof err.error === 'object') {
+            errorText = err.error.message || err.error.Message || errorText;
+          } else if (err.error && typeof err.error === 'string') {
+            try {
+              const parsed = JSON.parse(err.error);
+              errorText = parsed.message || parsed.Message || errorText;
+            } catch {
+              errorText = err.error;
+            }
+          }
+          this.triggerAlertError(errorText);
+        },
+      });
+  }
+
+  protected copyToClipboard(): void {
+    const markdown = this.optimizedCvMarkdown();
+    if (!markdown) return;
+
+    navigator.clipboard
+      .writeText(markdown)
+      .then(() => {
+        this.successMessage.set('¡Copiado al portapapeles!');
+        setTimeout(() => this.successMessage.set(''), 3000);
+      })
+      .catch(() => {
+        this.triggerAlertError('No se pudo copiar al portapapeles.');
+      });
+  }
+
+  protected resetOptimization(): void {
+    this.atsMatchScore.set(null);
+    this.optimizedCvMarkdown.set('');
+    this.jobTitle.set('');
+    this.jobDescription.set('');
+  }
+
+  protected structureProfile(): void {
+    const rawText = this.extractedText();
+    if (!rawText) return;
+
+    this.isStructuring.set(true);
+    this.errorMessage.set('');
+    this.successMessage.set('');
+
+    const rawSkills = this.extractPotentialSkills(rawText);
+
+    this.http
+      .post<any>(
+        `${this.apiBaseUrl}/api/skills/match`,
+        { RawSkills: rawSkills },
+        {
+          headers: { Authorization: `Bearer ${this.token()}` },
+        },
+      )
+      .subscribe({
+        next: (matchResponse) => {
+          const canonical = matchResponse.canonicalSkills || matchResponse.CanonicalSkills || [];
+          const custom = matchResponse.customSkills || matchResponse.CustomSkills || [];
+
+          this.http
+            .post<any>(
+              `${this.apiBaseUrl}/api/profile/process`,
+              {
+                CvText: rawText,
+                CanonicalSkills: canonical,
+                CustomSkills: custom,
+              },
+              {
+                headers: { Authorization: `Bearer ${this.token()}` },
+              },
+            )
+            .subscribe({
+              next: (processResponse) => {
+                this.isStructuring.set(false);
+                this.isStructured.set(true);
+                this.successMessage.set('¡Perfil estructurado y guardado con éxito!');
+                setTimeout(() => this.successMessage.set(''), 4000);
+              },
+              error: (err) => {
+                this.isStructuring.set(false);
+                this.triggerAlertError('Error al estructurar el perfil con Azure OpenAI.');
+              },
+            });
+        },
+        error: (err) => {
+          this.isStructuring.set(false);
+          this.triggerAlertError('Error al cruzar habilidades con la taxonomía.');
+        },
+      });
+  }
+
+  private extractPotentialSkills(text: string): string[] {
+    if (!text) return [];
+    const matches = text.match(/[A-Za-z0-9+#\.\-]+/g) || [];
+    const unique = Array.from(new Set(matches));
+    return unique.filter((word) => {
+      const w = word.trim();
+      return w.length >= 2 && w.length <= 15 && !/^\d+$/.test(w);
+    });
   }
 }

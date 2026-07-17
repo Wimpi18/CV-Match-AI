@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.Data.SqlClient;
 
@@ -10,18 +11,9 @@ namespace CvMatchApi.Services;
 /// </summary>
 public class SkillsCatalogService : ISkillsCatalogService
 {
-    /// <inheritdoc />
-    public async Task<SkillMatchResponse> MatchSkillsAsync(List<string> rawSkills)
+    private async Task<List<SkillCatalogItem>> GetCatalogAsync()
     {
-        if (rawSkills == null)
-        {
-            throw new ArgumentNullException(nameof(rawSkills));
-        }
-
-        var canonicalSkills = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var customSkills = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        List<SkillCatalogItem> catalog = new();
+        var catalog = new List<SkillCatalogItem>();
         bool connectedToSql = false;
 
         var connStr = Environment.GetEnvironmentVariable("LOCAL_SQL_CONNECTION_STRING");
@@ -29,7 +21,6 @@ public class SkillsCatalogService : ISkillsCatalogService
         {
             try
             {
-                // 1. Attempt connection and query local SQL Server (Docker)
                 using var conn = new SqlConnection(connStr);
                 await conn.OpenAsync().ConfigureAwait(false);
                 using var cmd = new SqlCommand(
@@ -51,7 +42,6 @@ public class SkillsCatalogService : ISkillsCatalogService
             }
             catch (Exception ex)
             {
-                // Fallback gracefully if Docker/Local SQL is offline
                 Console.WriteLine(
                     $"[WARNING] Local SQL Server connection failed. Using in-memory fallback. Detail: {ex.Message}"
                 );
@@ -60,11 +50,25 @@ public class SkillsCatalogService : ISkillsCatalogService
 
         if (!connectedToSql)
         {
-            // 2. Load fallback list with identical seed data from db/init.sql
             catalog = GetFallbackCatalog();
         }
 
-        // 3. Normalization algorithm
+        return catalog;
+    }
+
+    /// <inheritdoc />
+    public async Task<SkillMatchResponse> MatchSkillsAsync(List<string> rawSkills)
+    {
+        if (rawSkills == null)
+        {
+            throw new ArgumentNullException(nameof(rawSkills));
+        }
+
+        var canonicalSkills = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var customSkills = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var catalog = await GetCatalogAsync().ConfigureAwait(false);
+
         foreach (var raw in rawSkills)
         {
             if (string.IsNullOrWhiteSpace(raw))
@@ -77,7 +81,7 @@ public class SkillsCatalogService : ISkillsCatalogService
 
             foreach (var item in catalog)
             {
-                // Direct match on Canonical name
+                // Check direct canonical match
                 if (
                     string.Equals(
                         item.CanonicalName,
@@ -91,7 +95,7 @@ public class SkillsCatalogService : ISkillsCatalogService
                     break;
                 }
 
-                // Check Synonyms list (comma-separated values)
+                // Check synonym match
                 var synonyms = item.Synonyms.Split(
                     ',',
                     StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
@@ -112,7 +116,7 @@ public class SkillsCatalogService : ISkillsCatalogService
                 }
             }
 
-            // 4. Classify as custom skill if not found in catalog
+            // Classify as custom skill if not found in catalog
             if (!matched)
             {
                 customSkills.Add(cleanedRaw);
@@ -123,6 +127,60 @@ public class SkillsCatalogService : ISkillsCatalogService
             new List<string>(canonicalSkills),
             new List<string>(customSkills)
         );
+    }
+
+    /// <inheritdoc />
+    public async Task<List<string>> FindMatchingSkillsInTextAsync(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return new List<string>();
+        }
+
+        var catalog = await GetCatalogAsync().ConfigureAwait(false);
+        var matchedSkills = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var item in catalog)
+        {
+            // Check direct canonical name in text
+            if (ContainsWord(text, item.CanonicalName))
+            {
+                matchedSkills.Add(item.CanonicalName);
+                continue;
+            }
+
+            // Check synonyms
+            var synonyms = item.Synonyms.Split(
+                ',',
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
+            );
+            foreach (var syn in synonyms)
+            {
+                if (ContainsWord(text, syn))
+                {
+                    matchedSkills.Add(item.CanonicalName);
+                    break;
+                }
+            }
+        }
+
+        return new List<string>(matchedSkills);
+    }
+
+    private static bool ContainsWord(string text, string word)
+    {
+        if (string.IsNullOrWhiteSpace(word))
+            return false;
+
+        string escapedWord = Regex.Escape(word);
+
+        // Handle special symbols like C# or Vue.js or .NET
+        string pattern =
+            word.Contains('#') || word.Contains('.')
+                ? $@"(?i)\b{escapedWord}\b|(?i){escapedWord}"
+                : $@"(?i)\b{escapedWord}\b";
+
+        return Regex.IsMatch(text, pattern);
     }
 
     private static List<SkillCatalogItem> GetFallbackCatalog()

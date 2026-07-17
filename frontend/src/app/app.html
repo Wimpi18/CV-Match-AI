@@ -233,36 +233,218 @@
               </button>
             </div>
 
-            <div class="extracted-text-box">
-              <pre>{{ extractedText() }}</pre>
-            </div>
-
-            <div class="extra-steps-banner">
-              <div class="step-text">
-                <h3>Siguiente paso: Estructurar Perfil</h3>
-                <p>
-                  Las habilidades detectadas en este texto se cruzarán con la taxonomía oficial de
-                  SQL Server y se estructurarán en formato JSON con Azure OpenAI para guardarse en
-                  Azure Cosmos DB.
-                </p>
+            @if (!isStructured()) {
+              <div class="extracted-text-box">
+                <pre>{{ extractedText() }}</pre>
               </div>
-              <button class="btn btn-accent">
-                Normalizar y Guardar Perfil
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
+
+              <div class="extra-steps-banner">
+                <div class="step-text">
+                  <h3>Siguiente paso: Estructurar Perfil</h3>
+                  <p>
+                    Las habilidades detectadas en este texto se cruzarán con la taxonomía oficial de
+                    SQL Server y se estructurarán en formato JSON con Azure OpenAI para guardarse en
+                    Azure Cosmos DB.
+                  </p>
+                </div>
+                <button
+                  class="btn btn-accent"
+                  [disabled]="isStructuring()"
+                  (click)="structureProfile()"
                 >
-                  <polyline points="9 18 15 12 9 6"></polyline>
-                </svg>
-              </button>
-            </div>
+                  @if (isStructuring()) {
+                    <div class="btn-spinner animate-spin"></div>
+                    Procesando...
+                  } @else {
+                    Normalizar y Guardar Perfil
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <polyline points="9 18 15 12 9 6"></polyline>
+                    </svg>
+                  }
+                </button>
+              </div>
+            } @else {
+              <!-- Optimization Section -->
+              <div class="optimization-container animate-fade-in">
+                @if (atsMatchScore() === null) {
+                  <div class="optimize-form-wrapper">
+                    <h3>Motor de ATS Match y Optimización de CV</h3>
+                    <p class="section-desc">
+                      Ingresa los detalles de la oferta laboral para calibrar tu CV y calcular tu
+                      porcentaje de compatibilidad ATS.
+                    </p>
+
+                    <div class="form-group">
+                      <label for="opt-job-title">Título del Puesto</label>
+                      <input
+                        id="opt-job-title"
+                        type="text"
+                        placeholder="Ej. Senior Fullstack Developer (.NET & Angular)"
+                        class="form-input"
+                        [value]="jobTitle()"
+                        (input)="jobTitle.set($any($event.target).value)"
+                        [disabled]="isOptimizing()"
+                      />
+                    </div>
+
+                    <div class="form-group">
+                      <div class="label-row">
+                        <label for="opt-job-desc">Descripción de la Oferta / Requisitos</label>
+                        <span
+                          class="char-counter"
+                          [class.counter-invalid]="
+                            jobDescription().length < 100 || jobDescription().length > 10000
+                          "
+                        >
+                          {{ jobDescription().length }} / 10,000 caracteres
+                        </span>
+                      </div>
+                      <textarea
+                        id="opt-job-desc"
+                        placeholder="Pega la descripción completa del puesto, responsabilidades y habilidades requeridas (mínimo 100 caracteres)..."
+                        class="form-textarea"
+                        [value]="jobDescription()"
+                        (input)="jobDescription.set($any($event.target).value)"
+                        [disabled]="isOptimizing()"
+                      ></textarea>
+                    </div>
+
+                    <button
+                      class="btn btn-accent btn-optimize-submit"
+                      [disabled]="
+                        isOptimizing() ||
+                        jobDescription().length < 100 ||
+                        jobDescription().length > 10000
+                      "
+                      (click)="optimizeCv()"
+                    >
+                      @if (isOptimizing()) {
+                        <div class="btn-spinner animate-spin"></div>
+                        Optimizando CV con OpenAI...
+                      } @else {
+                        Calibrar y Optimizar CV
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        >
+                          <path
+                            d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"
+                          ></path>
+                        </svg>
+                      }
+                    </button>
+                  </div>
+                } @else {
+                  <div class="optimize-results-wrapper animate-fade-in">
+                    <div class="results-header">
+                      <h3>Calibración ATS Finalizada</h3>
+                      <button class="btn btn-secondary" (click)="resetOptimization()">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        >
+                          <path d="M19 12H5M12 19l-7-7 7-7" />
+                        </svg>
+                        Optimizar para otra vacante
+                      </button>
+                    </div>
+
+                    <div class="results-grid">
+                      <!-- ATS Match Indicator Column -->
+                      <div class="ats-score-card">
+                        <div class="circular-score-wrapper">
+                          <div
+                            class="score-ring"
+                            [class.ring-high]="atsMatchScore()! >= 75"
+                            [class.ring-mid]="atsMatchScore()! >= 50 && atsMatchScore()! < 75"
+                            [class.ring-low]="atsMatchScore()! < 50"
+                          >
+                            <span class="score-number">{{ atsMatchScore() }}%</span>
+                            <span class="score-label">Compatibilidad</span>
+                          </div>
+                        </div>
+
+                        <div class="score-insights">
+                          <h4>Estado de Compatibilidad ATS</h4>
+                          @if (atsMatchScore()! >= 75) {
+                            <p class="insight-text text-high">
+                              Excelente compatibilidad. Tu perfil cumple con la mayoría de las
+                              habilidades clave de la taxonomía del puesto y cuenta con la densidad
+                              de palabras recomendada para superar filtros automatizados.
+                            </p>
+                          } @else if (atsMatchScore()! >= 50) {
+                            <p class="insight-text text-mid">
+                              Compatibilidad moderada. El CV ha sido reestructurado e integra
+                              sinónimos clave de SQL Server, pero hay algunas áreas técnicas
+                              específicas en los requisitos que requieren mayor profundización.
+                            </p>
+                          } @else {
+                            <p class="insight-text text-low">
+                              Compatibilidad baja. Tu perfil base tiene brechas importantes con los
+                              requisitos técnicos exigidos en la descripción del puesto. Te
+                              sugerimos revisar las tecnologías demandadas.
+                            </p>
+                          }
+                        </div>
+                      </div>
+
+                      <!-- Optimized Markdown Output Column -->
+                      <div class="optimized-cv-card">
+                        <div class="card-title-row">
+                          <h4>CV Optimizado en Formato Markdown</h4>
+                          <button class="btn btn-secondary btn-copy" (click)="copyToClipboard()">
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2"
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                            >
+                              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                              <path
+                                d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+                              ></path>
+                            </svg>
+                            Copiar Markdown
+                          </button>
+                        </div>
+                        <div class="markdown-preview-box">
+                          <pre><code>{{ optimizedCvMarkdown() }}</code></pre>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                }
+              </div>
+            }
           </div>
         }
       </section>

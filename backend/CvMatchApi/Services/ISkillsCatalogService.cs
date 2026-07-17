@@ -14,6 +14,13 @@ public interface ISkillsCatalogService
     /// <param name="rawSkills">A list of raw skills extracted from a CV.</param>
     /// <returns>A response containing normalized canonical skills and custom/unrecognized skills.</returns>
     Task<SkillMatchResponse> MatchSkillsAsync(List<string> rawSkills);
+
+    /// <summary>
+    /// Searches a job description text for occurrences of canonical skills or their synonyms in the taxonomy.
+    /// </summary>
+    /// <param name="text">The job description or vacancy text to scan.</param>
+    /// <returns>A list of recognized canonical skill names found in the text.</returns>
+    Task<List<string>> FindMatchingSkillsInTextAsync(string text);
 }
 
 /// <summary>

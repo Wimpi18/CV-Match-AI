@@ -121,6 +121,9 @@ if (!string.IsNullOrEmpty(dintelEndpoint))
 // Register Document Intelligence Service
 builder.Services.AddScoped<IDocumentIntelligenceService, DocumentIntelligenceService>();
 
+// Register CV Optimization Service
+builder.Services.AddScoped<ICvOptimizationService, CvOptimizationService>();
+
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 

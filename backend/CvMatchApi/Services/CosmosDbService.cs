@@ -42,4 +42,38 @@ public class CosmosDbService : ICosmosDbService
         var partitionKey = new PartitionKey(profile.UserId);
         await _container.UpsertItemAsync(profile, partitionKey).ConfigureAwait(false);
     }
+
+    /// <inheritdoc />
+    public async Task<UserProfileDocument?> GetProfileAsync(string email)
+    {
+        if (string.IsNullOrEmpty(email))
+        {
+            throw new ArgumentNullException(nameof(email));
+        }
+
+        try
+        {
+            var partitionKey = new PartitionKey(email);
+            var response = await _container
+                .ReadItemAsync<UserProfileDocument>(email, partitionKey)
+                .ConfigureAwait(false);
+            return response.Resource;
+        }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task UpsertOptimizedCvAsync(OptimizedCvDocument doc)
+    {
+        if (doc == null)
+        {
+            throw new ArgumentNullException(nameof(doc));
+        }
+
+        var partitionKey = new PartitionKey(doc.UserId);
+        await _container.UpsertItemAsync(doc, partitionKey).ConfigureAwait(false);
+    }
 }

@@ -88,6 +88,9 @@ public class ApiTester
         // --- NEW TESTS FOR CREDIT CONTROL MIDDLEWARE ---
         Console.WriteLine("\n--- Testing CV Optimization & Credit Control Middleware ---");
 
+        // Seed mock profile in Cosmos DB to satisfy profile retrieve check in Optimize
+        await SeedMockProfileInCosmosDbAsync().ConfigureAwait(false);
+
         // Clear usage logs from previous runs for a deterministic test
         await ClearUsageLogsAsync().ConfigureAwait(false);
 
@@ -467,7 +470,11 @@ public class ApiTester
     private async Task TestUnauthorizedOptimizeAsync()
     {
         Console.Write("Test 9: POST /api/cv/optimize without JWT... ");
-        var body = new { JobTitle = "Software Engineer", JobDescription = "C# and SQL" };
+        var body = new
+        {
+            JobTitle = "Software Engineer",
+            JobDescription = "We are seeking a highly skilled Software Engineer with extensive experience in React, TypeScript, C#, and SQL Server. The candidate will design, develop, and maintain backend APIs and frontend components using modern practices. Must be comfortable with Azure DevOps, Docker containers, and database management.",
+        };
         var response = await _client
             .PostAsJsonAsync($"{_baseUrl}/api/cv/optimize", body)
             .ConfigureAwait(false);
@@ -496,7 +503,7 @@ public class ApiTester
         var body = new
         {
             JobTitle = $"Fullstack Dev #{runNumber}",
-            JobDescription = "React and .NET",
+            JobDescription = "We are seeking a highly skilled Software Engineer with extensive experience in React, TypeScript, C#, and SQL Server. The candidate will design, develop, and maintain backend APIs and frontend components using modern practices. Must be comfortable with Azure DevOps, Docker containers, and database management.",
         };
         request.Content = JsonContent.Create(body);
 
@@ -506,10 +513,16 @@ public class ApiTester
             var json = await response
                 .Content.ReadFromJsonAsync<JsonElement>()
                 .ConfigureAwait(false);
-            if (json.TryGetProperty("logId", out _))
+            if (
+                json.TryGetProperty("logId", out _)
+                && json.TryGetProperty("atsMatchScore", out _)
+                && json.TryGetProperty("optimizedCvMarkdown", out _)
+            )
             {
                 Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine("[SUCCESS] 200 OK. Usage log created.");
+                Console.WriteLine(
+                    "[SUCCESS] 200 OK. Usage log, ATS score, and Markdown CV created."
+                );
                 Console.ResetColor();
                 return;
             }
@@ -527,7 +540,11 @@ public class ApiTester
         using var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/api/cv/optimize");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-        var body = new { JobTitle = "Cloud Architect", JobDescription = "Azure and Terraform" };
+        var body = new
+        {
+            JobTitle = "Cloud Architect",
+            JobDescription = "We are seeking a highly skilled Software Engineer with extensive experience in React, TypeScript, C#, and SQL Server. The candidate will design, develop, and maintain backend APIs and frontend components using modern practices. Must be comfortable with Azure DevOps, Docker containers, and database management.",
+        };
         request.Content = JsonContent.Create(body);
 
         var response = await _client.SendAsync(request).ConfigureAwait(false);
@@ -955,5 +972,43 @@ public class ApiTester
         Console.ForegroundColor = ConsoleColor.Red;
         Console.WriteLine($"[FAILURE] Status: {response.StatusCode}, Detail: {err}");
         Console.ResetColor();
+    }
+
+    private async Task SeedMockProfileInCosmosDbAsync()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("COSMOS_CONNECTION_STRING");
+        if (string.IsNullOrEmpty(connectionString))
+            return;
+
+        try
+        {
+            using var cosmosClient = new CosmosClient(connectionString);
+            var container = cosmosClient.GetDatabase("cvmatch-store").GetContainer("resumes");
+            var email = "test-google-oauth@example.com";
+
+            var mockProfile = new
+            {
+                id = email,
+                userId = email,
+                personalInfo = new { name = "Google Test User", email = email },
+                experience = new Newtonsoft.Json.Linq.JArray(),
+                education = new Newtonsoft.Json.Linq.JArray(),
+                skills = new
+                {
+                    canonical = new string[] { "React", "C#", "SQL Server" },
+                    custom = new string[] { "Flutter" },
+                },
+                rawText = "Google Test User resume text.",
+                updatedAt = DateTime.UtcNow,
+            };
+
+            await container
+                .UpsertItemAsync(mockProfile, new PartitionKey(email))
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[WARNING] Failed to seed Cosmos DB mock profile: {ex.Message}");
+        }
     }
 }
