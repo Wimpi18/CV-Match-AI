@@ -228,6 +228,48 @@ resource sqlAdminPasswordSecret 'Microsoft.KeyVault/vaults/secrets@2026-02-01' =
   }
 }
 
+resource budget 'Microsoft.Consumption/budgets@2023-05-01' = {
+  name: 'cvmatch-budget'
+  properties: {
+    timeGrain: 'Monthly'
+    amount: 200
+    category: 'Cost'
+    timePeriod: {
+      startDate: '2026-07-01T00:00:00Z'
+      endDate: '2030-07-01T00:00:00Z'
+    }
+    notifications: {
+      Actual_Alert_50: {
+        enabled: true
+        operator: 'GreaterThan'
+        threshold: 25
+        contactEmails: [
+          'admin@wonderfulcliff-cd80baae.com'
+        ]
+        thresholdType: 'Actual'
+      }
+      Actual_Alert_100: {
+        enabled: true
+        operator: 'GreaterThan'
+        threshold: 50
+        contactEmails: [
+          'admin@wonderfulcliff-cd80baae.com'
+        ]
+        thresholdType: 'Actual'
+      }
+      Actual_Alert_150: {
+        enabled: true
+        operator: 'GreaterThan'
+        threshold: 75
+        contactEmails: [
+          'admin@wonderfulcliff-cd80baae.com'
+        ]
+        thresholdType: 'Actual'
+      }
+    }
+  }
+}
+
 output acrLoginServer string = acr.properties.loginServer
 output sqlConnectionString string = 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Initial Catalog=${sqlDbName};Persist Security Info=False;User ID=wimpisqladmin;MultipleActiveResultSets=True;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;'
 output cosmosDbEndpoint string = cosmosDbAccount.properties.documentEndpoint

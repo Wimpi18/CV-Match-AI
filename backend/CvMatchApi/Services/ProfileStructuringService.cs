@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Azure.AI.OpenAI;
+using Microsoft.ApplicationInsights;
 using OpenAI.Chat;
 
 namespace CvMatchApi.Services;
@@ -13,15 +14,18 @@ namespace CvMatchApi.Services;
 public class ProfileStructuringService : IProfileStructuringService
 {
     private readonly AzureOpenAIClient _openAiClient;
+    private readonly TelemetryClient? _telemetryClient;
     private readonly string _deploymentName;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ProfileStructuringService"/> class.
     /// </summary>
     /// <param name="openAiClient">The Azure OpenAI client.</param>
-    public ProfileStructuringService(AzureOpenAIClient openAiClient)
+    /// <param name="telemetryClient">The optional Application Insights telemetry client.</param>
+    public ProfileStructuringService(AzureOpenAIClient openAiClient, TelemetryClient? telemetryClient = null)
     {
         _openAiClient = openAiClient;
+        _telemetryClient = telemetryClient;
         _deploymentName = Environment.GetEnvironmentVariable("AZURE_OPENAI_DEPLOYMENT_NAME") ?? "gpt-chat-latest";
     }
 
@@ -98,7 +102,14 @@ Extract personalInfo, experience, and education from the provided CV text. If an
                 };
 
                 var response = await chatClient.CompleteChatAsync(messages, options).ConfigureAwait(false);
-                var responseContent = response.Value.Content[0].Text;
+
+                // Track token usage metrics in Application Insights
+                if (response.Value?.Usage != null && _telemetryClient != null)
+                {
+                    _telemetryClient.TrackMetric("OpenAiStructuringTokens", response.Value.Usage.TotalTokenCount);
+                }
+
+                var responseContent = response.Value?.Content?[0]?.Text ?? string.Empty;
                 if (!string.IsNullOrWhiteSpace(responseContent))
                 {
                     return responseContent;

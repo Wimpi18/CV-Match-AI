@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Azure;
 using Azure.AI.OpenAI;
 using CvMatchApi.Models;
+using Microsoft.ApplicationInsights;
 using OpenAI.Chat;
 
 namespace CvMatchApi.Services;
@@ -15,17 +16,19 @@ namespace CvMatchApi.Services;
 public class CvOptimizationService : ICvOptimizationService
 {
     private readonly AzureOpenAIClient? _openAiClient;
+    private readonly TelemetryClient? _telemetryClient;
     private readonly string _deploymentName;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CvOptimizationService"/> class.
     /// </summary>
     /// <param name="openAiClient">The optional Azure OpenAI client.</param>
-    public CvOptimizationService(AzureOpenAIClient? openAiClient = null)
+    /// <param name="telemetryClient">The optional Application Insights telemetry client.</param>
+    public CvOptimizationService(AzureOpenAIClient? openAiClient = null, TelemetryClient? telemetryClient = null)
     {
         _openAiClient = openAiClient;
-        _deploymentName =
-            Environment.GetEnvironmentVariable("AZURE_OPENAI_DEPLOYMENT_NAME") ?? "gpt-chat-latest";
+        _telemetryClient = telemetryClient;
+        _deploymentName = Environment.GetEnvironmentVariable("AZURE_OPENAI_DEPLOYMENT_NAME") ?? "gpt-chat-latest";
     }
 
     /// <inheritdoc />
@@ -96,7 +99,14 @@ Guidelines for 'optimizedMarkdown':
             var response = await chatClient
                 .CompleteChatAsync(messages, options)
                 .ConfigureAwait(false);
-            var responseText = response.Value.Content[0].Text;
+
+            // Track token usage metrics in Application Insights
+            if (response.Value?.Usage != null && _telemetryClient != null)
+            {
+                _telemetryClient.TrackMetric("OpenAiOptimizationTokens", response.Value.Usage.TotalTokenCount);
+            }
+
+            var responseText = response.Value?.Content?[0]?.Text ?? string.Empty;
 
             using var doc = JsonDocument.Parse(responseText);
             var root = doc.RootElement;

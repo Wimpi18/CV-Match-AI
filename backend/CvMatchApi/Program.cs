@@ -68,6 +68,9 @@ builder
         };
     });
 
+// Register Application Insights Telemetry
+builder.Services.AddApplicationInsightsTelemetry();
+
 builder.Services.AddAuthorization();
 
 // Configure Azure Blob Storage Client
