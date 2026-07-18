@@ -200,7 +200,7 @@ Hoy en día, más del 70% de los CVs son descartados automáticamente por sistem
 
 ¿Listos para llevar su currículum al siguiente nivel? ¡Prueben la beta pública hoy mismo!
 
-🔗 **Demo frontend**: `https://blue-river-00f861b1e.7.azurestaticapps.net`
+🔗 **Demo frontend**: [`https://blue-river-00f861b1e.7.azurestaticapps.net`](https://blue-river-00f861b1e.7.azurestaticapps.net)
 
 
 #dotnet #angular #azure #cloudcomputing #openai #artificialintelligence #jobsearch #ats
