@@ -50,19 +50,27 @@ jobs:
           acrUsername: ${{ secrets.ACR_USERNAME }}
           acrPassword: ${{ secrets.ACR_PASSWORD }}
           targetPort: 8080
-          environmentVariables: |
-            AZURE_SQL_CONNECTION_STRING="${{ env.AZURE_SQL_CONNECTION_STRING }}"
-            COSMOS_CONNECTION_STRING="${{ env.COSMOS_CONNECTION_STRING }}"
-            AZURE_STORAGE_CONNECTION_STRING="${{ env.AZURE_STORAGE_CONNECTION_STRING }}"
-            AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT="${{ env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT }}"
-            AZURE_OPENAI_ENDPOINT="${{ env.AZURE_OPENAI_ENDPOINT }}"
-            AZURE_OPENAI_DEPLOYMENT_NAME="${{ env.AZURE_OPENAI_DEPLOYMENT_NAME }}"
-            JWT_KEY="${{ env.JWT_KEY }}"
-            JWT_ISSUER="${{ env.JWT_ISSUER }}"
-            JWT_AUDIENCE="${{ env.JWT_AUDIENCE }}"
-            GOOGLE_CLIENT_ID="${{ env.GOOGLE_CLIENT_ID }}"
-            APPLICATIONINSIGHTS_CONNECTION_STRING="${{ env.APPLICATIONINSIGHTS_CONNECTION_STRING }}"
-            FRONTEND_URL="https://ca-cvmatch-api.wonderfulcliff-cd80baae.westus.azurecontainerapps.io"
+
+      # 4. Actualizar variables de entorno de forma segura usando Azure CLI (maneja espacios en strings)
+      - name: Update Container App Environment Variables
+        run: |
+          az containerapp update \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --set-env-vars \
+              AZURE_SQL_CONNECTION_STRING="${{ secrets.AZURE_SQL_CONNECTION_STRING }}" \
+              COSMOS_CONNECTION_STRING="${{ secrets.COSMOS_CONNECTION_STRING }}" \
+              AZURE_STORAGE_CONNECTION_STRING="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
+              AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT="${{ secrets.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT }}" \
+              AZURE_OPENAI_ENDPOINT="${{ secrets.AZURE_OPENAI_ENDPOINT }}" \
+              AZURE_OPENAI_DEPLOYMENT_NAME="${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME }}" \
+              JWT_KEY="${{ secrets.JWT_KEY }}" \
+              JWT_ISSUER="${{ secrets.JWT_ISSUER }}" \
+              JWT_AUDIENCE="${{ secrets.JWT_AUDIENCE }}" \
+              GOOGLE_CLIENT_ID="${{ secrets.GOOGLE_CLIENT_ID }}" \
+              APPLICATIONINSIGHTS_CONNECTION_STRING="${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING }}" \
+              FRONTEND_URL="${{ env.FRONTEND_URL }}"
+
 
         env:
           AZURE_SQL_CONNECTION_STRING: ${{ secrets.AZURE_SQL_CONNECTION_STRING }}
@@ -76,3 +84,5 @@ jobs:
           JWT_AUDIENCE: ${{ secrets.JWT_AUDIENCE }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           APPLICATIONINSIGHTS_CONNECTION_STRING: ${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING }}
+          FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+

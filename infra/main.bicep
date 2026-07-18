@@ -270,6 +270,17 @@ resource budget 'Microsoft.Consumption/budgets@2023-05-01' = {
   }
 }
 
+// 13. Azure Static Web App (Frontend Hosting)
+resource staticWebApp 'Microsoft.Web/staticSites@2023-12-01' = {
+  name: 'swa-${projectName}-${environmentName}-${uniqueSuffix}'
+  location: 'westus2'
+  sku: {
+    name: 'Free'
+    tier: 'Free'
+  }
+  properties: {}
+}
+
 output acrLoginServer string = acr.properties.loginServer
 output sqlConnectionString string = 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Initial Catalog=${sqlDbName};Persist Security Info=False;User ID=wimpisqladmin;MultipleActiveResultSets=True;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;'
 output cosmosDbEndpoint string = cosmosDbAccount.properties.documentEndpoint
@@ -277,3 +288,5 @@ output storageAccountName string = storageAccountName
 output docIntelEndpoint string = docIntel.properties.endpoint
 output openaiEndpoint string = openai.properties.endpoint
 output keyVaultUri string = keyVault.properties.vaultUri
+output frontendUrl string = 'https://${staticWebApp.properties.defaultHostname}'
+

@@ -21,7 +21,8 @@ CV-Match-AI resuelve este problema dividiendo el flujo en dos fases críticas:
 ```mermaid
 graph TD
     subgraph Cliente (Frontend)
-        SPA[Angular 20 SPA] -->|1. Google Login| Auth[Google OAuth 2.0]
+        SWA[Azure Static Web App] -->|Hospeda| SPA[Angular 20 SPA]
+        SPA -->|1. Google Login| Auth[Google OAuth 2.0]
         SPA -->|2. Subida de PDF / Formulario Vacante| Gateway[Azure Container Apps Ingress]
     end
 
@@ -33,7 +34,7 @@ graph TD
     subgraph Servicios de Azure
         API -->|3. Guardar CV Original| Storage[Azure Blob Storage]
         API -->|4. Extraer Texto (OCR)| DocIntel[Azure AI Document Intelligence]
-        API -->|5. Validar Créditos y Taxonomía| AzureSQL[Azure SQL Database]
+        API -->|5. Validar Habilidades y Créditos| AzureSQL[Azure SQL Database]
         API -->|6. Procesar Estructura y Optimización| OpenAI[Azure OpenAI Service]
         API -->|7. Persistencia Perfil JSON| CosmosDB[Azure Cosmos DB Serverless]
     end
@@ -61,7 +62,6 @@ Copia el archivo de plantilla `.env.example` en la raíz del proyecto, renombrá
 cp .env.example .env
 ```
 Asegúrate de agregar todas tus cadenas de conexión de base de datos, endpoints de servicios cognitivos de Azure y credenciales OAuth de Google.
-
 
 ### Paso 2: Levantar y Migrar la Base de Datos Relacional
 Si deseas inicializar las tablas de base de datos de manera local con Docker, ejecuta:
@@ -93,15 +93,66 @@ dotnet run --project backend/ConnectionValidator/ConnectionValidator.csproj
 
 ---
 
-## 4. Referencia de Infraestructura y Telemetría (Reference)
+## 4. Despliegue a Producción (How-to)
+
+La arquitectura de producción está totalmente automatizada mediante **GitHub Actions** dividida en dos pipelines paralelos:
+- **Backend**: Despliegue automático a **Azure Container Apps** mediante [.github/workflows/deploy.yml](.github/workflows/deploy.yml).
+- **Frontend**: Despliegue automático a **Azure Static Web Apps** mediante [.github/workflows/deploy-frontend.yml](.github/workflows/deploy-frontend.yml).
+
+### Paso 1: Provisionar Infraestructura en Azure
+Ejecuta el despliegue del script Bicep para crear todos los recursos (incluyendo la Static Web App para el frontend):
+```bash
+az deployment group create --resource-group rg-cvmatchai-prod --template-file infra/main.bicep --parameters sqlAdminPassword="TuPasswordSeguro123!"
+```
+*Toma nota del output `frontendUrl` que se mostrará en pantalla al finalizar (por ejemplo: `https://swa-cvmatchai-prod-cah42hdmorzjm.azurestaticapps.net`).*
+
+### Paso 2: Obtener el Token de Despliegue de la Static Web App
+Consigue el token de API para configurar el pipeline del frontend ejecutando:
+```bash
+az staticwebapp secrets list --name "swa-cvmatchai-prod-cah42hdmorzjm" --resource-group "rg-cvmatchai-prod" --query properties.apiKey --output tsv
+```
+
+### Paso 3: Configurar Secretos en tu Repositorio de GitHub
+Ve a **Settings > Secrets and variables > Actions > Secrets** en tu repositorio de GitHub e introduce las siguientes credenciales:
+
+| Secreto de GitHub | Valor del Secreto |
+| :--- | :--- |
+| `AZURE_STATIC_WEB_APPS_API_TOKEN` | Token obtenido en el **Paso 2**. |
+| `FRONTEND_URL` | URL de tu Static Web App obtenida en el **Paso 1** (p. ej. `https://swa-...`). |
+| `AZURE_SQL_CONNECTION_STRING` | Cadena de conexión a tu base de datos de producción Azure SQL. |
+| `COSMOS_CONNECTION_STRING` | Cadena de conexión a Azure Cosmos DB. |
+| `AZURE_STORAGE_CONNECTION_STRING` | Cadena de conexión a Azure Storage Account (Blob). |
+| `AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT` | Endpoint de Azure AI Document Intelligence. |
+| `AZURE_OPENAI_ENDPOINT` | Endpoint de Azure OpenAI. |
+| `AZURE_OPENAI_DEPLOYMENT_NAME` | Nombre del modelo desplegado en Azure OpenAI. |
+| `JWT_KEY` | Clave secreta para firmar tokens JWT. |
+| `JWT_ISSUER` | Emisor del token JWT. |
+| `JWT_AUDIENCE` | Audiencia del token JWT. |
+| `GOOGLE_CLIENT_ID` | Client ID de Google OAuth. |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Cadena de conexión de Azure Application Insights. |
+| `ACR_USERNAME` / `ACR_PASSWORD` | Credenciales de acceso a Azure Container Registry (generadas por Bicep). |
+| `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` | Credenciales de Azure para autenticación OIDC de GitHub Actions. |
+
+### Paso 4: Lanzar el Ciclo de Despliegue
+Realiza un push a la rama `main`:
+```bash
+git add .
+git commit -m "feat: setup continuous deployment for api and frontend"
+git push origin main
+```
+Los pipelines paralelos compilarán y publicarán tu API en Azure Container Apps e inyectarán las cabeceras CORS correctas en el backend para permitir la comunicación segura desde tu nuevo dominio de Static Web Apps.
+
+---
+
+## 5. Referencia de Infraestructura y Telemetría (Reference)
 
 ### Catálogo de Variables de Entorno Clave
 | Variable | Tipo | Propósito |
 | :--- | :--- | :--- |
 | `AZURE_SQL_CONNECTION_STRING` | Conexión SQL | Acceso a las tablas relacionales para loguear uso y cruzar taxonomía. |
-| `COSMOS_CONNECTION_STRING` | Conexión NoSQL | Persistencia del perfil estructurado en Cosmos DB. |
-| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Conexión Telemetría | Envío de telemetría, errores y consumo de recursos. |
-| `FRONTEND_URL` | Configuración | Origen permitido por las políticas del middleware de CORS. |
+| `COSMOS_CONNECTION_STRING` | Conexión NoSQL | Persistencia del perfil JSON estructurado en Cosmos DB. |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Conexión Telemetría | Envío de telemetría, logs y consumo de recursos. |
+| `FRONTEND_URL` | Configuración | Origen permitido por las políticas del middleware de CORS en producción. |
 
 ### Telemetría de Tokens en Azure OpenAI
 El backend recopila métricas personalizadas en Application Insights cada vez que se consume el modelo de IA:
@@ -112,7 +163,7 @@ Estas métricas te permiten monitorizar el costo operativo exacto del uso de int
 
 ---
 
-## 5. Seguridad y Políticas en Producción (Explanation)
+## 6. Seguridad y Políticas en Producción (Explanation)
 
 - **Cabeceras de Seguridad Inyectadas**: Todas las respuestas de la API contienen cabeceras restrictivas contra ataques comunes:
   - `X-Content-Type-Options: nosniff` (previene sniffing de tipos MIME).
@@ -124,7 +175,7 @@ Estas métricas te permiten monitorizar el costo operativo exacto del uso de int
 
 ---
 
-## 6. Kit de Lanzamiento Social (LinkedIn Post)
+## 7. Kit de Lanzamiento Social (LinkedIn Post)
 
 ***
 
@@ -142,8 +193,8 @@ Hoy en día, más del 70% de los CVs son descartados automáticamente por sistem
 - **Control Financiero**: Infraestructura serverless y control estricto de consumo por créditos de usuario para optimizar costos de computación.
 
 #### 🛠️ Arquitectura Cloud de Alto Rendimiento:
-- **Frontend**: Single Page Application con Angular 20 y reactividad nativa mediante señales.
-- **Backend**: .NET 10 Web API protegido con JWT y cabeceras estrictas de seguridad (CORS restringido, CSP y políticas anti-clickjacking).
+- **Frontend**: Single Page Application con Angular 20 y reactividad nativa mediante señales alojada en Azure Static Web Apps.
+- **Backend**: .NET 10 Web API protegido con JWT y cabeceras estrictas de seguridad (CORS restringido, CSP y políticas anti-clickjacking) en Azure Container Apps.
 - **Almacenamiento**: Azure Blob Storage y Cosmos DB Serverless.
 - **Monitoreo**: Telemetría integrada con Application Insights y alertas automáticas de presupuesto mensual.
 
