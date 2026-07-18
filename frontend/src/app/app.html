@@ -99,35 +99,41 @@
           </p>
         </div>
 
-        <button class="btn btn-login-google" (click)="loginWithGoogle()">
-          <svg
-            class="google-icon"
-            viewBox="0 0 24 24"
-            width="24"
-            height="24"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <g transform="matrix(1, 0, 0, 1, 0, 0)">
-              <path
-                d="M21.35,11.1H12v2.7h5.38c-0.24,1.28 -0.96,2.37 -2.04,3.1v2.56h3.29c1.92,-1.78 3.03,-4.4 3.03,-7.43c0,-0.64 -0.06,-1.27 -0.17,-1.88Z"
-                fill="#4285F4"
-              />
-              <path
-                d="M12,20.6c2.43,0 4.47,-0.8 5.96,-2.18l-3.29,-2.56c-0.9,0.6 -2.07,0.98 -3.29,0.98c-2.34,0 -4.33,-1.58 -5.04,-3.71H2.92v2.64c1.48,2.94 4.52,4.83 8.04,4.83Z"
-                fill="#34A853"
-              />
-              <path
-                d="M6.96,13.13a5.21,5.21 0 0 1 0,-3.3V7.19H2.92a8.94,8.94 0 0 0 0,7.74l4.04,-3.3Z"
-                fill="#FBBC05"
-              />
-              <path
-                d="M12,5.2c1.32,0 2.5,0.45 3.44,1.35l2.58,-2.58C16.46,2.54 14.42,1.7 12,1.7c-3.52,0 -6.56,1.89 -8.04,4.83l4.04,3.3c0.71,-2.13 2.7,-3.71 5.04,-3.71Z"
-                fill="#EA4335"
-              />
-            </g>
-          </svg>
-          Ingresar con Google
+        <button class="btn btn-login-google" [disabled]="isLoggingIn()" (click)="loginWithGoogle()">
+          @if (isLoggingIn()) {
+            <div class="btn-spinner animate-spin"></div>
+            Conectando con Google...
+          } @else {
+            <svg
+              class="google-icon"
+              viewBox="0 0 24 24"
+              width="24"
+              height="24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <g transform="matrix(1, 0, 0, 1, 0, 0)">
+                <path
+                  d="M21.35,11.1H12v2.7h5.38c-0.24,1.28 -0.96,2.37 -2.04,3.1v2.56h3.29c1.92,-1.78 3.03,-4.4 3.03,-7.43c0,-0.64 -0.06,-1.27 -0.17,-1.88Z"
+                  fill="#4285F4"
+                />
+                <path
+                  d="M12,20.6c2.43,0 4.47,-0.8 5.96,-2.18l-3.29,-2.56c-0.9,0.6 -2.07,0.98 -3.29,0.98c-2.34,0 -4.33,-1.58 -5.04,-3.71H2.92v2.64c1.48,2.94 4.52,4.83 8.04,4.83Z"
+                  fill="#34A853"
+                />
+                <path
+                  d="M6.96,13.13a5.21,5.21 0 0 1 0,-3.3V7.19H2.92a8.94,8.94 0 0 0 0,7.74l4.04,-3.3Z"
+                  fill="#FBBC05"
+                />
+                <path
+                  d="M12,5.2c1.32,0 2.5,0.45 3.44,1.35l2.58,-2.58C16.46,2.54 14.42,1.7 12,1.7c-3.52,0 -6.56,1.89 -8.04,4.83l4.04,3.3c0.71,-2.13 2.7,-3.71 5.04,-3.71Z"
+                  fill="#EA4335"
+                />
+              </g>
+            </svg>
+            Ingresar con Google
+          }
         </button>
+
       </section>
     } @else {
       <!-- 2. INTERACTIVE DRAG & DROP CV UPLOADER VIEW -->

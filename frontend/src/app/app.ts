@@ -44,12 +44,24 @@ export class App implements OnInit {
   protected readonly optimizationStep = signal<string>('');
   protected readonly isCopied = signal<boolean>(false);
 
+  // Connection and login status signals
+  protected readonly isLoggingIn = signal<boolean>(false);
+
   // Structuring state signals
   protected readonly isStructuring = signal<boolean>(false);
   protected readonly isStructured = signal<boolean>(false);
 
   ngOnInit(): void {
     this.checkAuthentication();
+    this.preWarmBackend();
+  }
+
+  private preWarmBackend(): void {
+    // Send a non-blocking ping to the backend to wake up the Container App (prevent cold start delay)
+    this.http.get(`${this.apiBaseUrl}/api/auth/ping`, { responseType: 'text' }).subscribe({
+      next: () => console.log('Backend pre-warmed successfully.'),
+      error: (err) => console.warn('Failed to pre-warm backend:', err)
+    });
   }
 
   private checkAuthentication(): void {
@@ -84,9 +96,11 @@ export class App implements OnInit {
   }
 
   protected loginWithGoogle(): void {
+    this.isLoggingIn.set(true);
     // Redirect browser to backend Google login flow
     window.location.href = `${this.apiBaseUrl}/api/auth/login`;
   }
+
 
   protected logout(): void {
     // Clear storage session

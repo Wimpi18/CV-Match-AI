@@ -59,6 +59,18 @@ public class AuthController(AppDbContext context) : ControllerBase
     }
 
     /// <summary>
+    /// Health probe endpoint to wake up the Container App (pre-warm) and bypass cold starts.
+    /// </summary>
+    /// <returns>A simple success response.</returns>
+    /// <response code="200">The server is warm and ready.</response>
+    [HttpGet("ping")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public IActionResult Ping()
+    {
+        return Ok("pong");
+    }
+
+    /// <summary>
     /// Receives the Google callback with authorization code, registers or updates the user, and returns a 24-hour JWT token.
     /// </summary>
     /// <param name="code">The authorization code returned from Google.</param>
