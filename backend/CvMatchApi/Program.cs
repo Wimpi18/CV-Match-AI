@@ -43,8 +43,11 @@ var sqlConnectionString = Environment.GetEnvironmentVariable("AZURE_SQL_CONNECTI
 builder.Services.AddDbContext<AppDbContext>(options => options.UseSqlServer(sqlConnectionString));
 
 // Configure JWT Authentication
-var jwtKey =
-    Environment.GetEnvironmentVariable("JWT_KEY") ?? "SuperSecretSecureKeyForCvMatchAi2026!";
+var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY");
+if (string.IsNullOrWhiteSpace(jwtKey) || jwtKey.Length < 32)
+{
+    throw new InvalidOperationException("A secure JWT_KEY environment variable of at least 256 bits (32 characters) must be configured.");
+}
 var jwtIssuer = Environment.GetEnvironmentVariable("JWT_ISSUER") ?? "CvMatchIssuer";
 var jwtAudience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? "CvMatchAudience";
 

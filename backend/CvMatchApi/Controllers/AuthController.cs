@@ -237,9 +237,11 @@ public class AuthController(AppDbContext context) : ControllerBase
 
     private string GenerateJwtToken(string email, string name)
     {
-        var jwtKey =
-            Environment.GetEnvironmentVariable("JWT_KEY")
-            ?? "SuperSecretSecureKeyForCvMatchAi2026!";
+        var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY");
+        if (string.IsNullOrWhiteSpace(jwtKey))
+        {
+            throw new InvalidOperationException("JWT_KEY environment variable is not configured.");
+        }
         var jwtIssuer = Environment.GetEnvironmentVariable("JWT_ISSUER") ?? "CvMatchIssuer";
         var jwtAudience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? "CvMatchAudience";
 
