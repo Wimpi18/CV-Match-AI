@@ -72,7 +72,7 @@ jobs:
               GOOGLE_CLIENT_SECRET="${{ secrets.GOOGLE_CLIENT_SECRET }}" \
               GOOGLE_CALLBACK_URL="${{ secrets.GOOGLE_CALLBACK_URL }}" \
               APPLICATIONINSIGHTS_CONNECTION_STRING="${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING }}" \
-              FRONTEND_URL="${{ env.FRONTEND_URL }}"
+              FRONTEND_URL="${{ secrets.FRONTEND_URL }}"
 
         env:
           AZURE_SQL_CONNECTION_STRING: ${{ secrets.AZURE_SQL_CONNECTION_STRING }}
