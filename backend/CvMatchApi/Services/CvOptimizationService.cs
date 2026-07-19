@@ -52,7 +52,7 @@ public class CvOptimizationService : ICvOptimizationService
             Console.WriteLine(
                 "[WARNING] AzureOpenAIClient is null. Using local optimization fallback."
             );
-            return GenerateFallback(profile, jobTitle, matchingCatalogSkills);
+            return GenerateFallback(profile, jobTitle, jobDescription, matchingCatalogSkills);
         }
 
         string systemPrompt = """
@@ -138,13 +138,14 @@ Be completely objective. Do not inflate the matchScore. If there is a clear doma
             Console.WriteLine(
                 $"[ERROR] Azure OpenAI CV optimization failed: {ex.Message}. Falling back."
             );
-            return GenerateFallback(profile, jobTitle, matchingCatalogSkills);
+            return GenerateFallback(profile, jobTitle, jobDescription, matchingCatalogSkills);
         }
     }
 
     private static OptimizationResult GenerateFallback(
         UserProfileDocument profile,
         string jobTitle,
+        string jobDescription,
         List<string> matchingSkills
     )
     {
@@ -185,20 +186,67 @@ Be completely objective. Do not inflate the matchScore. If there is a clear doma
             /* Fallback to empty user skills */
         }
 
-        // Calculate actual matching score (ratio of candidate matching skills vs job required skills)
-        int score = 0;
-        if (matchingSkills.Count > 0)
+        // 1. Extract clean keywords from CV text, job description, and job title
+        var userKeywords = ExtractKeywords(profile.RawText);
+        foreach (var skill in userSkills)
         {
-            int matchedSkillsCount = 0;
-            foreach (var skill in matchingSkills)
-            {
-                if (userSkills.Contains(skill))
-                {
-                    matchedSkillsCount++;
-                }
-            }
-            score = (int)Math.Round((double)matchedSkillsCount / matchingSkills.Count * 100);
+            userKeywords.Add(skill.ToLower());
         }
+
+        var jobKeywords = ExtractKeywords(jobDescription);
+        var titleKeywords = ExtractKeywords(jobTitle);
+
+        // 2. Title/Domain alignment check
+        int titleMatches = 0;
+        foreach (var word in titleKeywords)
+        {
+            if (userKeywords.Contains(word))
+            {
+                titleMatches++;
+            }
+        }
+        double titleMatchRatio = titleKeywords.Count > 0 ? (double)titleMatches / titleKeywords.Count : 0.0;
+
+        // 3. General JD keyword alignment check
+        int keywordMatches = 0;
+        foreach (var word in jobKeywords)
+        {
+            if (userKeywords.Contains(word))
+            {
+                keywordMatches++;
+            }
+        }
+        double keywordMatchRatio = jobKeywords.Count > 0 ? (double)keywordMatches / jobKeywords.Count : 0.0;
+
+        // 4. Catalog skills alignment check
+        int catalogMatches = 0;
+        foreach (var skill in matchingSkills)
+        {
+            if (userSkills.Contains(skill))
+            {
+                catalogMatches++;
+            }
+        }
+        double catalogMatchRatio = matchingSkills.Count > 0 ? (double)catalogMatches / matchingSkills.Count : 0.0;
+
+        // 5. Score calculation (Blended)
+        double finalScore = 0.0;
+
+        if (titleKeywords.Count > 0 && titleMatchRatio == 0.0)
+        {
+            // Clear domain mismatch (e.g. IT developer applying for Rural Health Agent)
+            // Cap score between 0% and 10%
+            finalScore = keywordMatchRatio * 10.0;
+        }
+        else
+        {
+            // Blended ATS criteria weight:
+            // 40% exact catalog skills, 40% general job description keywords, 20% job title words
+            double catalogWeight = matchingSkills.Count > 0 ? catalogMatchRatio : keywordMatchRatio;
+            finalScore = (catalogWeight * 40.0) + (keywordMatchRatio * 40.0) + (titleMatchRatio * 20.0);
+        }
+
+        int score = (int)Math.Round(finalScore);
 
         // Parse candidate name
         string name = "Profesional de TI";
@@ -250,5 +298,29 @@ Be completely objective. Do not inflate the matchScore. If there is a clear doma
         sb.AppendLine("*Universidad Estatal | 2020 - 2024*");
 
         return new OptimizationResult(sb.ToString(), score);
+    }
+
+    private static HashSet<string> ExtractKeywords(string text)
+    {
+        var keywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(text)) return keywords;
+
+        var words = text.Split(new[] { ' ', ',', '.', ';', ':', '(', ')', '[', ']', '-', '_', '/', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+
+        var stopWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "de", "la", "el", "en", "y", "a", "los", "del", "se", "las", "por", "un", "para", "con", "no", "una", "su", "al", "lo", "como", "más", "but", "or", "and", "the", "a", "an", "of", "to", "in", "for", "with", "on", "at", "by", "from", "up", "about", "into", "over", "after"
+        };
+
+        foreach (var word in words)
+        {
+            var cleanWord = word.Trim().ToLower();
+            if (cleanWord.Length >= 3 && !stopWords.Contains(cleanWord) && !int.TryParse(cleanWord, out _))
+            {
+                keywords.Add(cleanWord);
+            }
+        }
+
+        return keywords;
     }
 }
