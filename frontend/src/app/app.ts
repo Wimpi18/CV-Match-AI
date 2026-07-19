@@ -1,6 +1,8 @@
 import { Component, signal, OnInit, inject } from '@angular/core';
 import { HttpClient, HttpEventType } from '@angular/common/http';
 
+
+
 @Component({
   selector: 'app-root',
   templateUrl: './app.html',
@@ -354,26 +356,203 @@ export class App implements OnInit {
       });
   }
 
-  protected exportToPdf(): void {
-    const cvHtml = this.getRenderedHtml(this.optimizedCvMarkdown());
-    if (!cvHtml) return;
+  protected async exportToPdf(): Promise<void> {
+    const markdown = this.optimizedCvMarkdown();
+    if (!markdown) return;
 
-    // Create a temporary container for printing
-    const printContainer = document.createElement('div');
-    printContainer.id = 'print-cv-container';
-    printContainer.innerHTML = cvHtml;
-    document.body.appendChild(printContainer);
+    try {
+      this.successMessage.set('Preparando PDF...');
+      
+      // Dynamic imports to prevent initial bundle budget bloat
+      const [pdfMakeModule, pdfFontsModule] = await Promise.all([
+        import('pdfmake/build/pdfmake'),
+        import('pdfmake/build/vfs_fonts')
+      ]);
 
-    // Add class to body to hide normal elements and show print container
-    document.body.classList.add('print-cv-active');
+      const pdfMake = pdfMakeModule.default;
+      const pdfFonts = pdfFontsModule.default;
 
-    // Trigger print
-    window.print();
+      // Assign virtual fonts for pdfmake using any cast to avoid TS compilation errors
+      (pdfMake as any).vfs = (pdfFonts as any).pdfMake.vfs;
 
-    // Clean up
-    document.body.classList.remove('print-cv-active');
-    document.body.removeChild(printContainer);
+      const docDefinition = this.buildPdfDefinitionFromMarkdown(markdown);
+
+      // Extract the candidate's name to use as file name
+      const candidateName = this.extractCandidateName(markdown) || 'CV_Optimizado';
+      const fileName = `${candidateName.trim().replace(/\s+/g, '_')}_CV.pdf`;
+
+      pdfMake.createPdf(docDefinition).download(fileName);
+      this.successMessage.set('¡PDF descargado con éxito!');
+      setTimeout(() => this.successMessage.set(''), 3000);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      this.triggerAlertError('No se pudo generar el PDF optimizado.');
+    }
   }
+
+  private extractCandidateName(markdown: string): string {
+    const lines = markdown.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('# ')) {
+        return trimmed.replace('# ', '').trim();
+      }
+    }
+    return '';
+  }
+
+  private buildPdfDefinitionFromMarkdown(markdown: string): any {
+    const lines = markdown.split('\n');
+    const content: any[] = [];
+
+    // Professional color system
+    const primaryColor = '#1e3a8a';   // Deep Navy Blue
+    const secondaryColor = '#475569'; // Slate Gray
+    const bodyColor = '#0f172a';      // Dark Slate
+
+    let currentList: any[] = [];
+
+    const pushCurrentList = () => {
+      if (currentList.length > 0) {
+        content.push({
+          ul: currentList,
+          margin: [0, 2, 0, 8],
+          style: 'body'
+        });
+        currentList = [];
+      }
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) {
+        continue;
+      }
+
+      // 1. Candidate Name (# Name)
+      if (line.startsWith('# ')) {
+        pushCurrentList();
+        const text = line.replace('# ', '').trim();
+        content.push({
+          text: text.toUpperCase(),
+          fontSize: 22,
+          bold: true,
+          color: primaryColor,
+          alignment: 'center',
+          margin: [0, 0, 0, 5]
+        });
+        continue;
+      }
+
+      // 2. Sections (## Section Name)
+      if (line.startsWith('## ')) {
+        pushCurrentList();
+        const text = line.replace('## ', '').trim();
+        content.push({
+          text: text,
+          fontSize: 14,
+          bold: true,
+          color: primaryColor,
+          margin: [0, 16, 0, 4],
+          keepWithNext: true
+        });
+        // Decorative divider line under section header
+        content.push({
+          canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 1.5, lineColor: '#cbd5e1' }],
+          margin: [0, 0, 0, 10]
+        });
+        continue;
+      }
+
+      // 3. Subsections (### Role / Company / Education)
+      if (line.startsWith('### ')) {
+        pushCurrentList();
+        const text = line.replace('### ', '').trim();
+        content.push({
+          text: text,
+          fontSize: 11,
+          bold: true,
+          color: secondaryColor,
+          margin: [0, 6, 0, 4],
+          keepWithNext: true
+        });
+        continue;
+      }
+
+      // 4. Bullet lists (- list item or * list item)
+      if (line.startsWith('- ') || line.startsWith('* ')) {
+        const itemText = line.substring(2).trim();
+        currentList.push({
+          text: this.parseInlineStyles(itemText),
+          fontSize: 10,
+          lineHeight: 1.2
+        });
+        continue;
+      }
+
+      // 5. Horizontal divider rules (---)
+      if (line === '---') {
+        pushCurrentList();
+        content.push({
+          canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: '#e2e8f0' }],
+          margin: [0, 8, 0, 8]
+        });
+        continue;
+      }
+
+      // 6. Normal text paragraphs
+      pushCurrentList();
+      const isContactInfo = line.includes('|') || line.includes('@') || line.includes('http');
+
+      content.push({
+        text: this.parseInlineStyles(line),
+        fontSize: isContactInfo ? 9.5 : 10,
+        color: isContactInfo ? secondaryColor : bodyColor,
+        alignment: isContactInfo ? 'center' : 'left',
+        margin: [0, 2, 0, isContactInfo ? 12 : 6],
+        lineHeight: 1.25
+      });
+    }
+
+    pushCurrentList();
+
+    return {
+      pageSize: 'LETTER',
+      pageMargins: [40, 45, 40, 45],
+      content: content,
+      styles: {
+        body: {
+          color: bodyColor,
+          font: 'Roboto'
+        }
+      },
+      defaultStyle: {
+        font: 'Roboto'
+      }
+    };
+  }
+
+  private parseInlineStyles(text: string): any[] {
+    const parts: any[] = [];
+    const regex = /\*\*(.*?)\*\*/g;
+    let lastIndex = 0;
+    let match;
+
+    while ((match = regex.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push({ text: text.substring(lastIndex, match.index) });
+      }
+      parts.push({ text: match[1], bold: true });
+      lastIndex = regex.lastIndex;
+    }
+
+    if (lastIndex < text.length) {
+      parts.push({ text: text.substring(lastIndex) });
+    }
+
+    return parts;
+  }
+
 
   protected resetOptimization(): void {
     this.atsMatchScore.set(null);
