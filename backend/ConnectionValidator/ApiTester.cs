@@ -562,7 +562,7 @@ public class ApiTester
             )
             {
                 string msg = msgProp.GetString()!;
-                if (msg == "Límite de generación gratuito alcanzado (Máximo 3 CVs)")
+                if (msg == "Límite de generación gratuito alcanzado (Máximo 20 CVs)")
                 {
                     Console.ForegroundColor = ConsoleColor.Green;
                     Console.WriteLine(

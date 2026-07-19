@@ -10,7 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace CvMatchApi.Middleware;
 
 /// <summary>
-/// Middleware to intercept CV optimization requests and restrict them to 3 successful generations per user.
+/// Middleware to intercept CV optimization requests and restrict them to 20 successful generations per user.
 /// </summary>
 /// <remarks>
 /// Initializes a new instance of the <see cref="CreditControlMiddleware"/> class.
@@ -73,13 +73,13 @@ public class CreditControlMiddleware(RequestDelegate next)
             int usageCount = await dbContext
                 .UsageLogs.CountAsync(ul => ul.UserId == user.Id)
                 .ConfigureAwait(false);
-            if (usageCount >= 3)
+            if (usageCount >= 20)
             {
                 context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
                 context.Response.ContentType = "application/json";
                 var errorResponse = new
                 {
-                    Message = "Límite de generación gratuito alcanzado (Máximo 3 CVs)",
+                    Message = "Límite de generación gratuito alcanzado (Máximo 20 CVs)",
                 };
                 await context
                     .Response.WriteAsync(JsonSerializer.Serialize(errorResponse))
