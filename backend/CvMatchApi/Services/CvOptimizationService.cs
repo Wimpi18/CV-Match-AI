@@ -70,7 +70,15 @@ Guidelines for 'optimizedMarkdown':
 - Format the CV beautifully using professional Markdown (headings, lists, bold text).
 - Tailor the experience descriptions and highlights to match the requirements of the job description without fabricating lies.
 - Emphasize and integrate the provided list of matching catalog skills.
-- The ATS match score must be an integer between 0 and 100 based on the candidate's skills alignment and experiences relevance.
+
+Strict Evaluation Rubric for 'matchScore':
+- 0% to 10% (No/Very Low Match): Completely different domains or industries (e.g. IT/Software engineer applying for Healthcare/Rural Health Agent, Chef, or Construction).
+- 11% to 35% (Low Match): Broad field alignment but candidate lacks key technical skills and relevant experience.
+- 36% to 60% (Medium Match): Partial overlap. Candidate lacks some core skills but has transferable technical capabilities.
+- 61% to 80% (High Match): Strong match. Candidate possesses major core technical skills and relevant work experience.
+- 81% to 100% (Excellent Match): Perfect fit. Candidate meets all technical requirements and has direct role experience.
+
+Be completely objective. Do not inflate the matchScore. If there is a clear domain mismatch, the score MUST be close to 0%. The score must be an integer between 0 and 100.
 """;
 
         string matchingSkillsStr = string.Join(", ", matchingCatalogSkills);
@@ -140,11 +148,56 @@ Guidelines for 'optimizedMarkdown':
         List<string> matchingSkills
     )
     {
-        // Simple heuristic matching score
-        int score = 65;
+        // Extract all candidate skills (canonical and custom) into a case-insensitive set
+        var userSkills = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            string skillsJson = JsonSerializer.Serialize(profile.Skills);
+            using var doc = JsonDocument.Parse(skillsJson);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty("canonical", out var canonicalProp) && canonicalProp.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in canonicalProp.EnumerateArray())
+                {
+                    var val = item.GetString();
+                    if (!string.IsNullOrEmpty(val))
+                    {
+                        userSkills.Add(val);
+                    }
+                }
+            }
+
+            if (root.TryGetProperty("custom", out var customProp) && customProp.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in customProp.EnumerateArray())
+                {
+                    var val = item.GetString();
+                    if (!string.IsNullOrEmpty(val))
+                    {
+                        userSkills.Add(val);
+                    }
+                }
+            }
+        }
+        catch
+        {
+            /* Fallback to empty user skills */
+        }
+
+        // Calculate actual matching score (ratio of candidate matching skills vs job required skills)
+        int score = 0;
         if (matchingSkills.Count > 0)
         {
-            score = Math.Min(98, 65 + (matchingSkills.Count * 8));
+            int matchedSkillsCount = 0;
+            foreach (var skill in matchingSkills)
+            {
+                if (userSkills.Contains(skill))
+                {
+                    matchedSkillsCount++;
+                }
+            }
+            score = (int)Math.Round((double)matchedSkillsCount / matchingSkills.Count * 100);
         }
 
         // Parse candidate name
@@ -179,7 +232,9 @@ Guidelines for 'optimizedMarkdown':
 
         foreach (var skill in matchingSkills)
         {
-            sb.AppendLine($"- **{skill}** (Alineado con los requisitos del puesto)");
+            bool candidateHasIt = userSkills.Contains(skill);
+            string matchStatus = candidateHasIt ? "Posee esta habilidad" : "Requerido por el puesto";
+            sb.AppendLine($"- **{skill}** ({matchStatus})");
         }
 
         sb.AppendLine();
