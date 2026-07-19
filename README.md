@@ -45,7 +45,7 @@ graph TD
 2. **Procesamiento de Documento**: El usuario sube su CV en PDF. El backend lo almacena en Azure Blob Storage y lo envía al servicio **Azure AI Document Intelligence** para extraer el texto estructurado, preservando el flujo de lectura (columnas, tablas y listas).
 3. **Cruce de Habilidades**: El sistema extrae posibles palabras clave del texto y consulta a **Azure SQL** para cruzarlas con la taxonomía maestra, clasificándolas en habilidades oficiales y tecnologías personalizadas.
 4. **Almacenamiento NoSQL**: Azure OpenAI estructura el currículum en un formato JSON estandarizado (`personalInfo`, `experience`, `education`, `skills`) que se guarda en **Azure Cosmos DB** utilizando el correo del usuario como partition key.
-5. **Calibración y Optimización**: El usuario ingresa una descripción de puesto. El backend descuenta un crédito de uso del usuario (límite estricto de 3 créditos máximos para proteger presupuestos de la API), recupera el perfil estructurado y genera una versión optimizada en Markdown con su correspondiente Score de compatibilidad ATS.
+5. **Calibración y Optimización**: El usuario ingresa una descripción de puesto. El backend descuenta un crédito de uso del usuario (límite estricto de 20 créditos máximos para proteger presupuestos de la API), recupera el perfil estructurado y genera una versión optimizada en Markdown con su correspondiente Score de compatibilidad ATS.
 
 ---
 

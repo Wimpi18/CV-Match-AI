@@ -24,10 +24,14 @@ namespace CvMatchApi.Controllers;
 [Route("api/profile")]
 public class ProfileController(
     IProfileStructuringService profileStructuringService,
-    ICosmosDbService cosmosDbService) : ControllerBase
+    ICosmosDbService cosmosDbService
+) : ControllerBase
 {
-    private readonly IProfileStructuringService _profileStructuringService = profileStructuringService ?? throw new ArgumentNullException(nameof(profileStructuringService));
-    private readonly ICosmosDbService _cosmosDbService = cosmosDbService ?? throw new ArgumentNullException(nameof(cosmosDbService));
+    private readonly IProfileStructuringService _profileStructuringService =
+        profileStructuringService
+        ?? throw new ArgumentNullException(nameof(profileStructuringService));
+    private readonly ICosmosDbService _cosmosDbService =
+        cosmosDbService ?? throw new ArgumentNullException(nameof(cosmosDbService));
 
     /// <summary>
     /// Sends raw CV text and standardized skills to Azure OpenAI for structuring, then persists the output to Cosmos DB.
@@ -58,11 +62,13 @@ public class ProfileController(
         try
         {
             // 2. Call OpenAI to structure the raw text and skills
-            string structuredJson = await _profileStructuringService.StructureProfileAsync(
-                request.CvText,
-                request.CanonicalSkills,
-                request.CustomSkills
-            ).ConfigureAwait(false);
+            string structuredJson = await _profileStructuringService
+                .StructureProfileAsync(
+                    request.CvText,
+                    request.CanonicalSkills,
+                    request.CustomSkills
+                )
+                .ConfigureAwait(false);
 
             // 3. Deserialize JSON to structure parts for Cosmos DB document properties
             var parsedProfile = Newtonsoft.Json.Linq.JObject.Parse(structuredJson);
@@ -83,25 +89,68 @@ public class ProfileController(
                 Education = education!,
                 Skills = skills!,
                 RawText = request.CvText,
-                UpdatedAt = DateTime.UtcNow
+                UpdatedAt = DateTime.UtcNow,
             };
 
             // 5. Upsert in Cosmos DB
             await _cosmosDbService.UpsertProfileAsync(document).ConfigureAwait(false);
 
-            return Ok(new
-            {
-                Message = "Profile structured and saved successfully.",
-                Profile = document
-            });
+            return Ok(
+                new { Message = "Profile structured and saved successfully.", Profile = document }
+            );
         }
         catch (Exception ex)
         {
-            return StatusCode(StatusCodes.Status500InternalServerError, new
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new
+                {
+                    Message = "An error occurred while processing the professional profile.",
+                    Detail = ex.Message,
+                }
+            );
+        }
+    }
+
+    /// <summary>
+    /// Retrieves the current user's structured profile from Cosmos DB.
+    /// </summary>
+    /// <returns>The structured user profile, or 204 No Content if not found.</returns>
+    /// <response code="200">The profile was retrieved successfully.</response>
+    /// <response code="204">If no profile exists for the user.</response>
+    /// <response code="401">If the request is unauthorized.</response>
+    [HttpGet]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GetProfileAsync()
+    {
+        var email = User.FindFirst(ClaimTypes.Email)?.Value ?? User.FindFirst("email")?.Value;
+        if (string.IsNullOrEmpty(email))
+        {
+            return Unauthorized(new { Message = "User email claim not found in JWT token." });
+        }
+
+        try
+        {
+            var profile = await _cosmosDbService.GetProfileAsync(email).ConfigureAwait(false);
+            if (profile == null)
             {
-                Message = "An error occurred while processing the professional profile.",
-                Detail = ex.Message
-            });
+                return NoContent();
+            }
+
+            return Ok(profile);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new
+                {
+                    Message = "An error occurred while fetching the profile.",
+                    Detail = ex.Message,
+                }
+            );
         }
     }
 }

@@ -92,6 +92,7 @@ export class App implements OnInit {
       this.userEmail.set(savedEmail);
       this.userName.set(savedName);
       this.isAuthenticated.set(true);
+      this.loadUserProfile();
     }
   }
 
@@ -325,6 +326,48 @@ export class App implements OnInit {
       .catch(() => {
         this.triggerAlertError('No se pudo copiar al portapapeles.');
       });
+  }
+
+  private loadUserProfile(): void {
+    this.http
+      .get<any>(`${this.apiBaseUrl}/api/profile`, {
+        headers: {
+          Authorization: `Bearer ${this.token()}`,
+        },
+      })
+      .subscribe({
+        next: (profile) => {
+          if (profile && (profile.rawText || profile.RawText)) {
+            const rawText = profile.rawText || profile.RawText;
+            this.extractedText.set(rawText);
+            this.isStructured.set(true);
+          }
+        },
+        error: (err) => {
+          console.warn('No active structured profile found in database:', err);
+        },
+      });
+  }
+
+  protected exportToPdf(): void {
+    const previewEl = document.querySelector('.markdown-rendered-view');
+    if (!previewEl) return;
+
+    // Create a temporary container for printing
+    const printContainer = document.createElement('div');
+    printContainer.id = 'print-cv-container';
+    printContainer.innerHTML = previewEl.innerHTML;
+    document.body.appendChild(printContainer);
+
+    // Add class to body to hide normal elements and show print container
+    document.body.classList.add('print-cv-active');
+
+    // Trigger print
+    window.print();
+
+    // Clean up
+    document.body.classList.remove('print-cv-active');
+    document.body.removeChild(printContainer);
   }
 
   protected resetOptimization(): void {

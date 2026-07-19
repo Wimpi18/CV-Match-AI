@@ -1098,3 +1098,100 @@
   color: #ffffff;
   font-weight: 600;
 }
+
+/* Print Layout Override Styles for High-Fidelity PDF Export */
+#print-cv-container {
+  display: none;
+}
+
+body.print-cv-active > *:not(#print-cv-container) {
+  display: none !important;
+}
+
+body.print-cv-active {
+  background: #ffffff !important;
+  color: #000000 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+body.print-cv-active #print-cv-container {
+  display: block !important;
+  background: #ffffff !important;
+  color: #000000 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100% !important;
+  overflow: visible !important;
+}
+
+@media print {
+  body.print-cv-active > *:not(#print-cv-container) {
+    display: none !important;
+  }
+
+  body.print-cv-active #print-cv-container {
+    display: block !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    overflow: visible !important;
+  }
+
+  #print-cv-container {
+    font-family: 'Inter', sans-serif !important;
+    color: #2c3e50 !important;
+    background: #ffffff !important;
+    font-size: 11pt !important;
+    line-height: 1.5 !important;
+  }
+
+  #print-cv-container h2,
+  #print-cv-container h3,
+  #print-cv-container h4,
+  #print-cv-container strong {
+    color: #000000 !important;
+    font-weight: bold !important;
+  }
+
+  #print-cv-container h2 {
+    font-size: 18pt !important;
+    margin-top: 0 !important;
+    margin-bottom: 8pt !important;
+    border-bottom: 2px solid #333333 !important;
+    padding-bottom: 4pt !important;
+  }
+
+  #print-cv-container h3 {
+    font-size: 14pt !important;
+    margin-top: 14pt !important;
+    margin-bottom: 6pt !important;
+    border-bottom: 1px solid #dddddd !important;
+    padding-bottom: 2pt !important;
+  }
+
+  #print-cv-container h4 {
+    font-size: 12pt !important;
+    margin-top: 10pt !important;
+    margin-bottom: 4pt !important;
+  }
+
+  #print-cv-container p,
+  #print-cv-container li {
+    color: #333333 !important;
+    font-size: 10.5pt !important;
+  }
+
+  #print-cv-container li {
+    margin-left: 20pt !important;
+    margin-bottom: 4pt !important;
+    list-style-type: disc !important;
+  }
+
+  @page {
+    size: letter;
+    margin: 1.5cm 2cm 1.5cm 2cm;
+  }
+}
