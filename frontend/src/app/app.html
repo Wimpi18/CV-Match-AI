@@ -133,7 +133,6 @@
             Ingresar con Google
           }
         </button>
-
       </section>
     } @else {
       <!-- 2. INTERACTIVE DRAG & DROP CV UPLOADER VIEW -->
@@ -421,12 +420,64 @@
                       <!-- Optimized Markdown Output Column -->
                       <div class="optimized-cv-card">
                         <div class="card-title-row">
-                          <h4>CV Optimizado en Formato Markdown</h4>
-                          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                          <div
+                            class="tab-button-group"
+                            style="
+                              display: flex;
+                              gap: 0.25rem;
+                              background: rgba(0, 0, 0, 0.2);
+                              padding: 0.25rem;
+                              border-radius: 8px;
+                              border: 1px solid rgba(255, 255, 255, 0.05);
+                            "
+                          >
+                            <button
+                              class="tab-btn"
+                              [class.active-tab-btn]="activeTab() === 'report'"
+                              (click)="activeTab.set('report')"
+                              style="
+                                font-size: 0.8rem;
+                                font-weight: 600;
+                                padding: 0.4rem 0.8rem;
+                                border-radius: 6px;
+                                border: none;
+                                background: transparent;
+                                color: #94a3b8;
+                                cursor: pointer;
+                                transition: all 0.2s;
+                              "
+                            >
+                              Reporte ATS
+                            </button>
+                            <button
+                              class="tab-btn"
+                              [class.active-tab-btn]="activeTab() === 'cv'"
+                              (click)="activeTab.set('cv')"
+                              style="
+                                font-size: 0.8rem;
+                                font-weight: 600;
+                                padding: 0.4rem 0.8rem;
+                                border-radius: 6px;
+                                border: none;
+                                background: transparent;
+                                color: #94a3b8;
+                                cursor: pointer;
+                                transition: all 0.2s;
+                              "
+                            >
+                              CV Optimizado
+                            </button>
+                          </div>
+                          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap">
                             <button
                               class="btn btn-secondary btn-copy"
                               (click)="copyToClipboard()"
                               [class.btn-copied]="isCopied()"
+                              [title]="
+                                activeTab() === 'report'
+                                  ? 'Copiar Reporte ATS'
+                                  : 'Copiar CV Optimizado'
+                              "
                             >
                               @if (isCopied()) {
                                 <svg
@@ -461,13 +512,22 @@
                                     d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
                                   ></path>
                                 </svg>
-                                Copiar CV
+                                {{ activeTab() === 'report' ? 'Copiar Reporte' : 'Copiar CV' }}
                               }
                             </button>
                             <button
                               class="btn btn-copy"
                               (click)="exportToPdf()"
-                              style="background: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-blue) 100%); border: none; color: #ffffff;"
+                              style="
+                                background: linear-gradient(
+                                  135deg,
+                                  var(--accent-cyan) 0%,
+                                  var(--accent-blue) 100%
+                                );
+                                border: none;
+                                color: #ffffff;
+                              "
+                              title="Exportar únicamente el CV Optimizado a PDF"
                             >
                               <svg
                                 xmlns="http://www.w3.org/2000/svg"
@@ -489,10 +549,17 @@
                           </div>
                         </div>
                         <div class="markdown-preview-box">
-                          <div
-                            [innerHTML]="getRenderedHtml(optimizedCvMarkdown())"
-                            class="markdown-rendered-view"
-                          ></div>
+                          @if (activeTab() === 'report') {
+                            <div
+                              [innerHTML]="getRenderedHtml(atsReportMarkdown())"
+                              class="markdown-rendered-view"
+                            ></div>
+                          } @else {
+                            <div
+                              [innerHTML]="getRenderedHtml(optimizedCvMarkdown())"
+                              class="markdown-rendered-view"
+                            ></div>
+                          }
                         </div>
                       </div>
                     </div>

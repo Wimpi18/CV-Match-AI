@@ -33,6 +33,12 @@ public class OptimizedCvDocument
     public string OptimizedCvMarkdown { get; set; } = string.Empty;
 
     /// <summary>
+    /// Gets or sets the detailed ATS compatibility report in Markdown format.
+    /// </summary>
+    [JsonProperty("atsReportMarkdown")]
+    public string AtsReportMarkdown { get; set; } = string.Empty;
+
+    /// <summary>
     /// Gets or sets the ATS match score percentage (0-100).
     /// </summary>
     [JsonProperty("atsMatchScore")]

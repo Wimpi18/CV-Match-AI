@@ -41,6 +41,8 @@ export class App implements OnInit {
   protected readonly isOptimizing = signal<boolean>(false);
   protected readonly atsMatchScore = signal<number | null>(null);
   protected readonly optimizedCvMarkdown = signal<string>('');
+  protected readonly atsReportMarkdown = signal<string>('');
+  protected readonly activeTab = signal<'report' | 'cv'>('report');
   protected readonly optimizationStep = signal<string>('');
   protected readonly isCopied = signal<boolean>(false);
 
@@ -60,7 +62,7 @@ export class App implements OnInit {
     // Send a non-blocking ping to the backend to wake up the Container App (prevent cold start delay)
     this.http.get(`${this.apiBaseUrl}/api/auth/ping`, { responseType: 'text' }).subscribe({
       next: () => console.log('Backend pre-warmed successfully.'),
-      error: (err) => console.warn('Failed to pre-warm backend:', err)
+      error: (err) => console.warn('Failed to pre-warm backend:', err),
     });
   }
 
@@ -101,7 +103,6 @@ export class App implements OnInit {
     // Redirect browser to backend Google login flow
     window.location.href = `${this.apiBaseUrl}/api/auth/login`;
   }
-
 
   protected logout(): void {
     // Clear storage session
@@ -288,6 +289,9 @@ export class App implements OnInit {
           this.optimizedCvMarkdown.set(
             response.optimizedCvMarkdown ?? response.OptimizedCvMarkdown ?? '',
           );
+          this.atsReportMarkdown.set(
+            response.atsReportMarkdown ?? response.AtsReportMarkdown ?? '',
+          );
         },
         error: (err) => {
           clearInterval(intervalId);
@@ -310,7 +314,8 @@ export class App implements OnInit {
   }
 
   protected copyToClipboard(): void {
-    const markdown = this.optimizedCvMarkdown();
+    const markdown =
+      this.activeTab() === 'report' ? this.atsReportMarkdown() : this.optimizedCvMarkdown();
     if (!markdown) return;
 
     navigator.clipboard
@@ -350,13 +355,13 @@ export class App implements OnInit {
   }
 
   protected exportToPdf(): void {
-    const previewEl = document.querySelector('.markdown-rendered-view');
-    if (!previewEl) return;
+    const cvHtml = this.getRenderedHtml(this.optimizedCvMarkdown());
+    if (!cvHtml) return;
 
     // Create a temporary container for printing
     const printContainer = document.createElement('div');
     printContainer.id = 'print-cv-container';
-    printContainer.innerHTML = previewEl.innerHTML;
+    printContainer.innerHTML = cvHtml;
     document.body.appendChild(printContainer);
 
     // Add class to body to hide normal elements and show print container
@@ -373,6 +378,8 @@ export class App implements OnInit {
   protected resetOptimization(): void {
     this.atsMatchScore.set(null);
     this.optimizedCvMarkdown.set('');
+    this.atsReportMarkdown.set('');
+    this.activeTab.set('report');
     this.jobTitle.set('');
     this.jobDescription.set('');
     this.isCopied.set(false);

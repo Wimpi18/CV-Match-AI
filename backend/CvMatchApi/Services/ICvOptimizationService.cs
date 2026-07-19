@@ -28,6 +28,11 @@ public interface ICvOptimizationService
 /// <summary>
 /// Represents the result of a CV optimization operation.
 /// </summary>
+/// <param name="AtsReportMarkdown">The detailed ATS compatibility report in Markdown.</param>
 /// <param name="OptimizedCvMarkdown">The resume formatted in Markdown.</param>
 /// <param name="AtsMatchScore">The ATS match score (0-100).</param>
-public record OptimizationResult(string OptimizedCvMarkdown, int AtsMatchScore);
+public record OptimizationResult(
+    string AtsReportMarkdown,
+    string OptimizedCvMarkdown,
+    int AtsMatchScore
+);

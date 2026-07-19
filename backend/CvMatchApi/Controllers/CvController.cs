@@ -128,6 +128,7 @@ public class CvController(
                 UserId = user.Email,
                 LogId = usageLog.Id,
                 OptimizedCvMarkdown = optimizationResult.OptimizedCvMarkdown,
+                AtsReportMarkdown = optimizationResult.AtsReportMarkdown,
                 AtsMatchScore = optimizationResult.AtsMatchScore,
                 JobTitle = request.JobTitle,
                 JobDescription = request.JobDescription,
@@ -143,6 +144,7 @@ public class CvController(
                     LogId = usageLog.Id,
                     AtsMatchScore = optimizationResult.AtsMatchScore,
                     OptimizedCvMarkdown = optimizationResult.OptimizedCvMarkdown,
+                    AtsReportMarkdown = optimizationResult.AtsReportMarkdown,
                 }
             );
         }
