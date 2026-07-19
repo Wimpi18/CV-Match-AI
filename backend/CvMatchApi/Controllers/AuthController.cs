@@ -41,12 +41,33 @@ public class AuthController(AppDbContext context) : ControllerBase
     [ProducesResponseType(StatusCodes.Status302Found)]
     public IActionResult Login()
     {
-        var clientId =
-            Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID")
-            ?? "dummy-client-id.apps.googleusercontent.com";
-        var redirectUri =
-            Environment.GetEnvironmentVariable("GOOGLE_CALLBACK_URL")
-            ?? "http://localhost:5008/api/auth/callback";
+        var isDevelopment = string.Equals(
+            Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"),
+            "Development",
+            StringComparison.OrdinalIgnoreCase
+        );
+
+        var clientId = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID");
+        var redirectUri = Environment.GetEnvironmentVariable("GOOGLE_CALLBACK_URL");
+
+        if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(redirectUri))
+        {
+            if (isDevelopment)
+            {
+                clientId ??= "dummy-client-id.apps.googleusercontent.com";
+                redirectUri ??= "http://localhost:5008/api/auth/callback";
+            }
+            else
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new
+                    {
+                        Message = "Google OAuth environment variables (GOOGLE_CLIENT_ID, GOOGLE_CALLBACK_URL) are not configured.",
+                    }
+                );
+            }
+        }
 
         var authorizationUrl =
             $"https://accounts.google.com/o/oauth2/v2/auth?"
@@ -90,17 +111,39 @@ public class AuthController(AppDbContext context) : ControllerBase
         string email;
         string name;
 
-        var clientId =
-            Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID")
-            ?? "dummy-client-id.apps.googleusercontent.com";
-        var clientSecret =
-            Environment.GetEnvironmentVariable("GOOGLE_CLIENT_SECRET") ?? "dummy-secret";
-        var redirectUri =
-            Environment.GetEnvironmentVariable("GOOGLE_CALLBACK_URL")
-            ?? "http://localhost:5008/api/auth/callback";
+        var isDevelopment = string.Equals(
+            Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"),
+            "Development",
+            StringComparison.OrdinalIgnoreCase
+        );
 
-        // 1. Bypass check for integration tests or dummy environments
-        if (code == "test-google-code" || clientId.StartsWith("dummy"))
+        var clientId = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID");
+        var clientSecret = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_SECRET");
+        var redirectUri = Environment.GetEnvironmentVariable("GOOGLE_CALLBACK_URL");
+
+        if (
+            string.IsNullOrEmpty(clientId)
+            || string.IsNullOrEmpty(clientSecret)
+            || string.IsNullOrEmpty(redirectUri)
+        )
+        {
+            if (isDevelopment)
+            {
+                clientId ??= "dummy-client-id.apps.googleusercontent.com";
+                clientSecret ??= "dummy-secret";
+                redirectUri ??= "http://localhost:5008/api/auth/callback";
+            }
+            else
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new { Message = "Google OAuth environment variables are not configured." }
+                );
+            }
+        }
+
+        // 1. Bypass check for integration tests or dummy environments (Development only)
+        if (isDevelopment && (code == "test-google-code" || clientId.StartsWith("dummy")))
         {
             email = "test-google-oauth@example.com";
             name = "Google Test User";
